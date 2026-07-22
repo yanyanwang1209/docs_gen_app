@@ -3,7 +3,7 @@ import os
 import uuid
 import json
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/files", tags=["文件管理"])
 
 @router.get("", response_model=FileList)
 async def list_files(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     category: str = Query(None, description="reference/generated"),
@@ -27,7 +28,7 @@ async def list_files(
     file_type: str = Query(None, description="文件类型筛选"),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取文件列表"""
+    """获取文件列表（仅显示当前用户的文件）"""
     query = select(ManagedFile)
 
     if category:
@@ -42,6 +43,11 @@ async def list_files(
                 ManagedFile.notes.contains(search),
             )
         )
+
+    # 获取当前用户 ID
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        query = query.where(ManagedFile.owner_id == user_id)
 
     # 计数
     count_query = select(func.count()).select_from(query.subquery())
@@ -63,6 +69,7 @@ async def list_files(
 
 @router.post("/upload", response_model=list[FileOut])
 async def upload_files(
+    request: Request,
     files: list[UploadFile] = File(...),
     category: str = "reference",
     tags: str = "",
@@ -73,6 +80,7 @@ async def upload_files(
     if not files:
         raise HTTPException(status_code=400, detail="请选择要上传的文件")
 
+    user_id = getattr(request.state, "user_id", None)
     results = []
     os.makedirs(settings.upload_dir, exist_ok=True)
 
@@ -110,6 +118,7 @@ async def upload_files(
             notes=notes,
             storage_path=storage_path,
             parsed_content=parsed_content,
+            owner_id=user_id,
         )
         db.add(file_record)
         results.append(file_record)

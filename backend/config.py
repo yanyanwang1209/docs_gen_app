@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # 应用配置
     app_secret_key: str = "change-this"
+    admin_default_password: str = "admin123"
     database_url: str = f"sqlite+aiosqlite:///{_PROJECT_DIR}/storage/docs_gen.db"
     storage_dir: str = os.path.join(_PROJECT_DIR, "storage")
     max_upload_size_mb: int = 50

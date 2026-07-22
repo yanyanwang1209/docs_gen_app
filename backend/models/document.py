@@ -1,6 +1,7 @@
 """文档生成任务模型"""
 import uuid
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import String, Integer, DateTime, Text, Boolean, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 from backend.database import Base
@@ -28,6 +29,7 @@ class GenerationTask(Base):
     generated_md: Mapped[str] = mapped_column(Text, default="", comment="生成的完整 Markdown")
     generated_word_path: Mapped[str] = mapped_column(String(500), default="", comment="生成的 Word 文件路径")
     error_message: Mapped[str] = mapped_column(Text, default="", comment="错误信息")
+    owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, comment="所有者")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(),

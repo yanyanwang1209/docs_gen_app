@@ -51,7 +51,7 @@
       </el-table-column>
       <el-table-column prop="tags" label="标签" width="150" show-overflow-tooltip />
       <el-table-column prop="notes" label="备注" width="150" show-overflow-tooltip />
-      <el-table-column prop="created_at" label="上传时间" width="160">
+      <el-table-column prop="created_at" :label="activeTab === 'generated' ? '生成时间' : '上传时间'" width="180">
         <template #default="{ row }">
           {{ formatDate(row.created_at) }}
         </template>
@@ -260,6 +260,9 @@ function formatSize(bytes) {
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString('zh-CN')
+  // 后端 SQLite func.now() 返回 UTC 时间，JSON 序列化后不带时区标识
+  // 需要加上 'Z' 让 JS 识别为 UTC，再用 Asia/Shanghai 转换
+  const str = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z'
+  return new Date(str).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
 }
 </script>

@@ -352,11 +352,17 @@ async function saveTemplate() {
   syncTableConfigToNode()
   saving.value = true
   try {
-    await templateApi.update(props.templateId, {
+    const res = await templateApi.update(props.templateId, {
       chapters: treeData.value,
     })
-    ElMessage.success('模板已保存')
-    emit('saved', props.templateId)
+    // 编辑系统模板时，后端返回新创建的个人副本 ID
+    const newId = res.data?.id
+    if (newId && newId !== props.templateId) {
+      ElMessage.success('已创建个人副本并保存')
+    } else {
+      ElMessage.success('模板已保存')
+    }
+    emit('saved', newId || props.templateId)
   } catch (e) {
     ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))
   } finally {

@@ -22,7 +22,7 @@ export const llmApi = {
   updateConfig(data) {
     return api.put('/llm/config', data)
   },
-  testConnection() {
-    return api.post('/llm/test')
+  testConnection(data) {
+    return api.post('/llm/test', data)
   },
 }

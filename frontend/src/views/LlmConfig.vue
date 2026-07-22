@@ -2,6 +2,10 @@
   <div class="llm-config">
     <h2 style="margin: 0 0 20px 0; font-size: 20px; color: #303133">LLM 配置</h2>
     <el-card shadow="never" style="max-width: 800px">
+      <!-- 配置来源提示 -->
+      <el-alert v-if="form.source === 'default'" title="当前使用系统默认 LLM 配置。保存后将使用您的个人配置。" type="info" :closable="false" style="margin-bottom: 16px" show-icon />
+      <el-alert v-else title="当前使用您的个人 LLM 配置" type="success" :closable="false" style="margin-bottom: 16px" show-icon />
+
       <el-form label-width="140px" :model="form" ref="formRef">
         <el-form-item label="API 地址">
           <el-input v-model="form.base_url" placeholder="http://localhost:8000/v1" />
@@ -64,6 +68,7 @@ const form = reactive({
     tp: '', ts: '', tc: '', tr: '', trep: '',
   },
   global_requirements: '',
+  source: 'default',
 })
 
 const saving = ref(false)
@@ -102,7 +107,6 @@ async function saveConfig() {
       global_requirements: form.global_requirements,
     })
     ElMessage.success('配置已保存')
-    // 刷新配置（获取脱敏后的 Key）
     const res = await llmApi.getConfig()
     Object.assign(form, res.data)
   } catch (e) {
@@ -116,13 +120,11 @@ async function testConnection() {
   testing.value = true
   testResult.value = null
   try {
-    // 先保存当前配置
-    await llmApi.updateConfig({
+    const res = await llmApi.testConnection({
       base_url: form.base_url,
       api_key: form.api_key,
       model: form.model,
     })
-    const res = await llmApi.testConnection()
     testResult.value = res.data
   } catch (e) {
     testResult.value = { ok: false, message: '连接测试失败: ' + (e.response?.data?.detail || e.message) }

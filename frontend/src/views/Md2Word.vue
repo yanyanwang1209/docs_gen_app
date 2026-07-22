@@ -74,8 +74,8 @@
         <el-table-column prop="file_size" label="大小" width="100">
           <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
         </el-table-column>
-        <el-table-column prop="created_at" label="转换时间" width="170">
-          <template #default="{ row }">{{ row.created_at?.slice(0, 19).replace('T', ' ') }}</template>
+        <el-table-column prop="created_at" label="转换时间" width="180">
+          <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
@@ -217,6 +217,12 @@ function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const str = dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z'
+  return new Date(str).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
 }
 
 function downloadBlob(blob, filename) {

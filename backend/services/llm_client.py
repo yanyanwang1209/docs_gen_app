@@ -172,21 +172,55 @@ class LLMClient:
             return {"ok": False, "message": f"连接测试失败: {str(e)}"}
 
 
-# 全局 LLM 客户端实例（延迟初始化）
+# 全局 LLM 客户端实例（延迟初始化，默认使用 settings 配置）
 _llm_client: Optional[LLMClient] = None
 
 
-def get_llm_client(model: Optional[str] = None) -> LLMClient:
-    """获取 LLM 客户端（可指定模型）"""
+def get_llm_client(
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> LLMClient:
+    """获取 LLM 客户端。
+
+    如果提供了 base_url/api_key/model，使用提供的值（per-user 配置）；
+    否则使用全局 settings 的默认值。
+    """
     global _llm_client
-    if _llm_client is None:
-        _llm_client = LLMClient()
-    if model and model != _llm_client.model:
-        return LLMClient(model=model)
-    return _llm_client
+    if base_url is None and api_key is None and model is None:
+        # 使用全局默认客户端
+        if _llm_client is None:
+            _llm_client = LLMClient()
+        if model and model != _llm_client.model:
+            return LLMClient(model=model)
+        return _llm_client
+    # 使用自定义配置（per-user 或临时覆盖）
+    return LLMClient(base_url=base_url, api_key=api_key, model=model)
+
+
+async def get_llm_config_for_user(db, user_id: str) -> dict:
+    """从数据库读取用户的 LLM 配置，未设置则返回全局默认值"""
+    if user_id:
+        from backend.models.user import User
+        from sqlalchemy import select
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            has_personal = user.llm_api_key or user.llm_base_url or user.llm_model
+            if has_personal:
+                return {
+                    "base_url": user.llm_base_url or settings.llm_base_url,
+                    "api_key": user.llm_api_key or settings.llm_api_key,
+                    "model": user.llm_model or settings.llm_model,
+                }
+    return {
+        "base_url": settings.llm_base_url,
+        "api_key": settings.llm_api_key,
+        "model": settings.llm_model,
+    }
 
 
 def reset_llm_client():
-    """重置 LLM 客户端（配置变更后调用）"""
+    """重置全局 LLM 客户端（配置变更后调用）"""
     global _llm_client
     _llm_client = None

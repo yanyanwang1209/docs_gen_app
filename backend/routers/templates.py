@@ -3,9 +3,9 @@ import json
 import os
 import tempfile
 import uuid
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from backend.database import get_db
 from backend.models.template import DocumentTemplate, ChapterNode
@@ -96,16 +96,27 @@ def _save_chapter_tree(
 
 @router.get("", response_model=TemplateList)
 async def list_templates(
+    request: Request,
     doc_type: str = Query(None, description="按文档类型筛选"),
     is_preset: bool = Query(None, description="按预设/自定义筛选"),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取模板列表"""
+    """获取模板列表（预设模板全部可见，自定义模板仅显示自己的）"""
     query = select(DocumentTemplate)
     if doc_type:
         query = query.where(DocumentTemplate.doc_type == doc_type)
     if is_preset is not None:
         query = query.where(DocumentTemplate.is_preset == is_preset)
+
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        # 预设模板全部可见 + 自己的自定义模板
+        query = query.where(
+            or_(
+                DocumentTemplate.is_preset == True,
+                DocumentTemplate.owner_id == user_id,
+            )
+        )
     query = query.order_by(DocumentTemplate.updated_at.desc())
 
     result = await db.execute(query)
@@ -131,12 +142,14 @@ async def list_templates(
 
 
 @router.post("", response_model=TemplateOut)
-async def create_template(data: TemplateCreate, db: AsyncSession = Depends(get_db)):
+async def create_template(data: TemplateCreate, request: Request, db: AsyncSession = Depends(get_db)):
     """创建模板"""
+    user_id = getattr(request.state, "user_id", None)
     template = DocumentTemplate(
         name=data.name,
         doc_type=data.doc_type,
         description=data.description,
+        owner_id=user_id,
     )
     db.add(template)
     await db.flush()
@@ -157,13 +170,47 @@ async def get_template(template_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{template_id}", response_model=TemplateOut)
 async def update_template(
-    template_id: str, data: TemplateUpdate, db: AsyncSession = Depends(get_db)
+    template_id: str, data: TemplateUpdate, request: Request, db: AsyncSession = Depends(get_db)
 ):
-    """更新模板"""
+    """更新模板。编辑系统模板时自动创建个人副本"""
     template = await db.get(DocumentTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
 
+    user_id = getattr(request.state, "user_id", None)
+
+    # 系统模板：创建个人副本，不修改原模板
+    if template.is_preset:
+        copy_template = DocumentTemplate(
+            name=data.name if data.name is not None else template.name + " (个人副本)",
+            doc_type=template.doc_type,
+            description=data.description if data.description is not None else template.description,
+            is_preset=False,
+            owner_id=user_id,
+        )
+        db.add(copy_template)
+        await db.flush()
+
+        # 复制原模板的章节
+        old_chapters = await db.execute(
+            select(ChapterNode).where(ChapterNode.template_id == template.id).order_by(ChapterNode.sort_order)
+        )
+        old_chapters_list = old_chapters.scalars().all()
+
+        # 构建章节树副本
+        chapter_tree = _build_chapter_tree(old_chapters_list)
+
+        # 如果请求中有新章节，使用新章节
+        if data.chapters is not None:
+            chapter_tree = [c.model_dump() for c in data.chapters]
+
+        _save_chapter_tree(db, copy_template.id, chapter_tree)
+
+        await db.commit()
+        await db.refresh(copy_template)
+        return await _get_template_with_chapters(copy_template.id, db)
+
+    # 个人模板：直接修改
     if data.name is not None:
         template.name = data.name
     if data.description is not None:
@@ -186,12 +233,12 @@ async def update_template(
 
 @router.delete("/{template_id}")
 async def delete_template(template_id: str, db: AsyncSession = Depends(get_db)):
-    """删除模板（预设模板不可删除）"""
+    """删除模板（系统模板不可删除）"""
     template = await db.get(DocumentTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
     if template.is_preset:
-        raise HTTPException(status_code=403, detail="预设模板不可删除，但可以编辑调整")
+        raise HTTPException(status_code=403, detail="系统模板不可删除，编辑系统模板会自动创建个人副本")
 
     await db.delete(template)
     await db.commit()
@@ -200,6 +247,7 @@ async def delete_template(template_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/extract-word", response_model=TemplateOut)
 async def extract_word_toc(
+    request: Request,
     file: UploadFile = File(...),
     template_name: str = Query("提取的模板"),
     doc_type: str = Query("srs"),
@@ -225,10 +273,12 @@ async def extract_word_toc(
 
     chapters = auto_number(chapters)
 
+    user_id = getattr(request.state, "user_id", None)
     template = DocumentTemplate(
         name=template_name,
         doc_type=doc_type,
         description=f"从 {file.filename} 提取的目录结构",
+        owner_id=user_id,
     )
     db.add(template)
     await db.flush()

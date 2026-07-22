@@ -4,13 +4,14 @@ import os
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from backend.database import get_db, async_session
 from backend.models.document import GenerationTask
 from backend.models.file import ManagedFile, FileCategory
+from backend.models.user import User
 from backend.schemas.document import (
     GenerationStartRequest, GenerationTaskOut, GenerationTaskListItem, GenerationTaskList,
     RetryChapterRequest,
@@ -29,6 +30,24 @@ _active_engines: dict[str, GenerationEngine] = {}
 _active_tasks: dict[str, asyncio.Task] = {}
 
 
+async def _get_user_llm_config(db: AsyncSession, user_id: str | None) -> dict:
+    """获取用户的 LLM 配置"""
+    if not user_id:
+        return {}
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user:
+        # 只要用户设置了任意一项 LLM 配置，就使用个人配置（未设置的用系统默认值）
+        has_personal = user.llm_api_key or user.llm_base_url or user.llm_model
+        if has_personal:
+            return {
+                "base_url": user.llm_base_url or settings.llm_base_url,
+                "api_key": user.llm_api_key or settings.llm_api_key,
+                "model": user.llm_model or settings.llm_model,
+            }
+    return {}
+
+
 def _on_generation_done(task: asyncio.Task):
     """后台任务完成回调：记录异常并清理引用"""
     task_id = task.get_name()
@@ -42,8 +61,10 @@ def _on_generation_done(task: asyncio.Task):
 
 
 @router.post("/start", response_model=GenerationTaskOut)
-async def start_generation(data: GenerationStartRequest, db: AsyncSession = Depends(get_db)):
+async def start_generation(data: GenerationStartRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """启动文档生成任务"""
+    user_id = getattr(request.state, "user_id", None)
+
     # 验证模板存在
     template = await db.get(DocumentTemplate, data.template_id)
     if not template:
@@ -92,13 +113,15 @@ async def start_generation(data: GenerationStartRequest, db: AsyncSession = Depe
         reference_file_ids=json.dumps(data.reference_file_ids, ensure_ascii=False),
         status="pending",
         total_chapters=total_chapters,
+        owner_id=user_id,
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
 
-    # 异步启动生成（后台任务，使用独立 session）
-    engine = GenerationEngine(task.id)
+    # 异步启动生成（后台任务，使用独立 session，传入 per-user LLM 配置）
+    llm_config = await _get_user_llm_config(db, user_id)
+    engine = GenerationEngine(task.id, llm_config=llm_config)
     _active_engines[task.id] = engine
 
     task_obj = asyncio.create_task(_run_generation(engine, task.id), name=task.id)
@@ -265,15 +288,21 @@ async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("", response_model=GenerationTaskList)
 async def list_tasks(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取历史任务列表"""
-    count_q = select(func.count()).select_from(GenerationTask)
+    """获取历史任务列表（仅显示当前用户的任务）"""
+    subquery = select(GenerationTask)
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        subquery = subquery.where(GenerationTask.owner_id == user_id)
+
+    count_q = select(func.count()).select_from(subquery.subquery())
     total = (await db.execute(count_q)).scalar()
 
-    query = select(GenerationTask).order_by(GenerationTask.created_at.desc())
+    query = subquery.order_by(GenerationTask.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     tasks = result.scalars().all()
@@ -321,6 +350,7 @@ async def build_word(task_id: str, db: AsyncSession = Depends(get_db)):
             category=FileCategory.generated,
             file_size=len(word_bytes),
             storage_path=word_path,
+            owner_id=task.owner_id,
         )
         db.add(managed_file)
 

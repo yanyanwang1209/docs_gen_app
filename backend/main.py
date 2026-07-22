@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.database import init_db
+from backend.middleware.auth import AuthMiddleware
 
 
 @asynccontextmanager
@@ -36,14 +37,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
-from backend.routers import files, templates, generation, md2word, llm_config
+# JWT 认证中间件
+app.add_middleware(AuthMiddleware)
 
+# 注册路由
+from backend.routers import files, templates, generation, md2word, llm_config, auth
+from backend.routers.admin import router as admin_router
+
+app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(templates.router)
 app.include_router(generation.router)
 app.include_router(md2word.router)
 app.include_router(llm_config.router)
+app.include_router(admin_router)
 
 
 @app.get("/api/health")

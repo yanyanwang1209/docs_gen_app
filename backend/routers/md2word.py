@@ -1,7 +1,7 @@
 """MD 转 Word API 路由"""
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/md2word", tags=["MD转Word"])
 
 @router.post("/convert")
 async def convert_md_file(
+    request: Request,
     file: UploadFile = File(...),
     output_filename: str = Form(""),
     db: AsyncSession = Depends(get_db),
@@ -35,11 +36,13 @@ async def convert_md_file(
     if content is None:
         content = content_bytes.decode("utf-8", errors="ignore")
 
-    return await _convert_and_save(content, output_filename or file.filename, db)
+    user_id = getattr(request.state, "user_id", None)
+    return await _convert_and_save(content, output_filename or file.filename, user_id, db)
 
 
 @router.post("/convert-text")
 async def convert_md_text(
+    request: Request,
     content: str = Form(""),
     output_filename: str = Form(""),
     db: AsyncSession = Depends(get_db),
@@ -49,10 +52,11 @@ async def convert_md_text(
         raise HTTPException(status_code=400, detail="请输入 Markdown 内容")
 
     filename = output_filename or "converted_document"
-    return await _convert_and_save(content, filename, db)
+    user_id = getattr(request.state, "user_id", None)
+    return await _convert_and_save(content, filename, user_id, db)
 
 
-async def _convert_and_save(content: str, filename: str, db: AsyncSession):
+async def _convert_and_save(content: str, filename: str, user_id: str | None, db: AsyncSession):
     """执行转换并保存文件"""
     converter = Md2WordConverter()
     converter.convert(content)
@@ -74,6 +78,7 @@ async def _convert_and_save(content: str, filename: str, db: AsyncSession):
         category=FileCategory.generated,
         file_size=len(word_bytes),
         storage_path=word_path,
+        owner_id=user_id,
     )
     db.add(managed_file)
     await db.commit()

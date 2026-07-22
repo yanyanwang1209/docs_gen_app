@@ -9,7 +9,7 @@ from backend.config import settings
 from backend.models.document import GenerationTask, GlobalConfig
 from backend.models.template import DocumentTemplate, ChapterNode
 from backend.models.file import ManagedFile
-from backend.services.llm_client import get_llm_client, LLMClient
+from backend.services.llm_client import LLMClient
 from backend.utils.chapter_tree import flatten_tree, get_node_path, count_chapters
 from backend.utils.text_utils import extract_summary
 
@@ -17,10 +17,20 @@ from backend.utils.text_utils import extract_summary
 class GenerationEngine:
     """文档生成引擎：逐章节生成"""
 
-    def __init__(self, task_id: str):
+    def __init__(self, task_id: str, llm_config: dict | None = None):
         self.task_id = task_id
         self._progress_queue: asyncio.Queue = asyncio.Queue()
         self._cancelled = False
+        # per-user LLM 配置（可选），未提供则使用全局 settings
+        self.llm_config = llm_config or {}
+
+    def _get_llm(self, doc_type: str = "") -> LLMClient:
+        """获取 LLM 客户端，优先使用 per-user 配置"""
+        cfg = self.llm_config
+        base_url = cfg.get("base_url") or settings.llm_base_url
+        api_key = cfg.get("api_key") or settings.llm_api_key
+        model = cfg.get("model") or settings.get_model_for_doc_type(doc_type) or settings.llm_model
+        return LLMClient(base_url=base_url, api_key=api_key, model=model)
 
     @property
     def progress_queue(self) -> asyncio.Queue:
@@ -93,7 +103,7 @@ class GenerationEngine:
                 global_req = global_config_row.value
 
             # 4. LLM 客户端
-            llm = get_llm_client(model=settings.get_model_for_doc_type(task.doc_type))
+            llm = self._get_llm(task.doc_type)
 
             # 5. 需要生成内容的章节数
             generating_chapters = [ch for ch in flat_queue if not ch["title_only"]]
@@ -407,7 +417,7 @@ class GenerationEngine:
         ref_contents = await self._load_reference_files(db, ref_file_ids)
 
         global_req = task.global_requirements or ""
-        llm = get_llm_client(model=settings.get_model_for_doc_type(task.doc_type))
+        llm = self._get_llm(task.doc_type)
 
         system_prompt = self._build_system_prompt(task.doc_type, global_req)
 

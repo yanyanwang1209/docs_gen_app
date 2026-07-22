@@ -19,6 +19,7 @@ class DocumentTemplate(Base):
     )
     description: Mapped[str] = mapped_column(Text, default="", comment="模板描述")
     is_preset: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否为预设模板")
+    owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, comment="所有者（预设模板为空）")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

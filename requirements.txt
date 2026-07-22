@@ -29,6 +29,7 @@ httpx>=0.28.0
 python-dotenv>=1.0.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
+pyjwt>=2.9.0
 
 # 开发/测试（可选，生产环境可删除）
 # pytest>=8.0.0
