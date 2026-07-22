@@ -1,6 +1,4 @@
 """LLM 配置管理 API — per-user 配置"""
-import os
-import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +18,6 @@ class LLMConfigOut(BaseModel):
     base_url: str = ""
     api_key: str = ""  # 脱敏后的 Key
     model: str = ""
-    models: dict = {}  # 各文档类型专用模型
     global_requirements: str = ""
     source: str = "default"  # "user" | "default"
 
@@ -29,7 +26,6 @@ class LLMConfigUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
-    models: dict | None = None
     global_requirements: str | None = None
 
 
@@ -82,17 +78,6 @@ async def get_config(request: Request, db: AsyncSession = Depends(get_db)):
         base_url=base_url,
         api_key=mask_api_key(api_key),
         model=model,
-        models={
-            "srs": settings.llm_model_srs or "",
-            "hld": settings.llm_model_hld or "",
-            "dd": settings.llm_model_dd or "",
-            "dbd": settings.llm_model_dbd or "",
-            "tp": settings.llm_model_tp or "",
-            "ts": settings.llm_model_ts or "",
-            "tc": settings.llm_model_tc or "",
-            "tr": settings.llm_model_tr or "",
-            "trep": settings.llm_model_trep or "",
-        },
         global_requirements=global_req,
         source=source,
     )
@@ -117,7 +102,6 @@ async def update_config(data: LLMConfigUpdate, request: Request, db: AsyncSessio
             user.llm_api_key = data.api_key
     if data.model is not None:
         user.llm_model = data.model
-    # models 字段暂不支持 per-user（使用全局 settings），保留接口兼容性
 
     # 保存全局写作要求（共享）
     if data.global_requirements is not None:

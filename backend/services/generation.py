@@ -24,12 +24,12 @@ class GenerationEngine:
         # per-user LLM 配置（可选），未提供则使用全局 settings
         self.llm_config = llm_config or {}
 
-    def _get_llm(self, doc_type: str = "") -> LLMClient:
+    def _get_llm(self) -> LLMClient:
         """获取 LLM 客户端，优先使用 per-user 配置"""
         cfg = self.llm_config
         base_url = cfg.get("base_url") or settings.llm_base_url
         api_key = cfg.get("api_key") or settings.llm_api_key
-        model = cfg.get("model") or settings.get_model_for_doc_type(doc_type) or settings.llm_model
+        model = cfg.get("model") or settings.llm_model
         return LLMClient(base_url=base_url, api_key=api_key, model=model)
 
     @property
@@ -103,7 +103,7 @@ class GenerationEngine:
                 global_req = global_config_row.value
 
             # 4. LLM 客户端
-            llm = self._get_llm(task.doc_type)
+            llm = self._get_llm()
 
             # 5. 需要生成内容的章节数
             generating_chapters = [ch for ch in flat_queue if not ch["title_only"]]
@@ -417,7 +417,7 @@ class GenerationEngine:
         ref_contents = await self._load_reference_files(db, ref_file_ids)
 
         global_req = task.global_requirements or ""
-        llm = self._get_llm(task.doc_type)
+        llm = self._get_llm()
 
         system_prompt = self._build_system_prompt(task.doc_type, global_req)
 

@@ -22,15 +22,6 @@
           <el-input v-model="form.model" placeholder="default-model" />
         </el-form-item>
 
-        <el-divider content-position="left">各文档类型专用模型（可选）</el-divider>
-        <el-row :gutter="16">
-          <el-col :span="12" v-for="item in docTypeModels" :key="item.key">
-            <el-form-item :label="item.label">
-              <el-input v-model="form.models[item.key]" :placeholder="'默认使用: ' + form.model" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
         <el-divider content-position="left">全局写作要求</el-divider>
         <el-form-item label="写作要求">
           <el-input v-model="form.global_requirements" type="textarea" :rows="4"
@@ -63,10 +54,6 @@ const form = reactive({
   base_url: '',
   api_key: '',
   model: '',
-  models: {
-    srs: '', hld: '', dd: '', dbd: '',
-    tp: '', ts: '', tc: '', tr: '', trep: '',
-  },
   global_requirements: '',
   source: 'default',
 })
@@ -74,18 +61,6 @@ const form = reactive({
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
-
-const docTypeModels = [
-  { key: 'srs', label: '需求规格说明书' },
-  { key: 'hld', label: '概要设计文档' },
-  { key: 'dd', label: '详细设计文档' },
-  { key: 'dbd', label: '数据库设计文档' },
-  { key: 'tp', label: '测试计划' },
-  { key: 'ts', label: '测试方案' },
-  { key: 'tc', label: '测试用例' },
-  { key: 'tr', label: '测试记录' },
-  { key: 'trep', label: '测试报告' },
-]
 
 onMounted(async () => {
   try {
@@ -103,7 +78,6 @@ async function saveConfig() {
       base_url: form.base_url,
       api_key: form.api_key,
       model: form.model,
-      models: form.models,
       global_requirements: form.global_requirements,
     })
     ElMessage.success('配置已保存')
