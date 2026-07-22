@@ -1,0 +1,35 @@
+# ============================================================
+# 离线部署：将所有依赖下载为 wheels 后拷贝到服务器安装
+# 使用方法：
+#   1. 联网机器：pip download -r requirements.txt -d ./wheels
+#   2. 拷贝 wheels/ 到服务器
+#   3. 服务器：pip install --no-index --find-links=./wheels -r requirements.txt
+# ============================================================
+
+# FastAPI 核心
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+aiofiles>=24.0
+
+# 数据库
+sqlalchemy>=2.0.50
+aiosqlite>=0.20.0
+
+# 文件解析
+python-docx>=1.1.0
+PyMuPDF>=1.25.0
+openpyxl>=3.1.0
+markdown>=3.7
+
+# LLM 调用
+httpx>=0.28.0
+
+# 工具
+python-dotenv>=1.0.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# 开发/测试（可选，生产环境可删除）
+# pytest>=8.0.0
+# pytest-asyncio>=0.25.0
