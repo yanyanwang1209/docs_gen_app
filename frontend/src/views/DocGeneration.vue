@@ -15,11 +15,25 @@
               </el-select>
             </el-form-item>
             <el-form-item label="章节模板" required>
-              <div style="display: flex; gap: 8px; width: 100%">
-                <el-select v-model="form.templateId" placeholder="选择模板" style="flex: 1" filterable>
-                  <el-option v-for="tpl in templateOptions" :key="tpl.value" :label="tpl.label" :value="tpl.value" />
-                </el-select>
-                <el-button @click="showTemplateEditor = true" :disabled="!form.templateId">编辑</el-button>
+              <div style="width: 100%">
+                <!-- 预设模板 -->
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 13px; color: #909399; white-space: nowrap; width: 70px">预设模板</span>
+                  <el-select v-model="form.templateId" placeholder="选择预设模板" style="flex: 1" @change="onPresetSelect">
+                    <el-option v-for="tpl in presetTemplates" :key="tpl.id" :label="tpl.label" :value="tpl.id" />
+                  </el-select>
+                  <el-button size="small" @click="openTemplateEditor(form.templateId)" :disabled="!form.templateId || !isPresetSelected">编辑</el-button>
+                </div>
+                <!-- 自定义模板 -->
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span style="font-size: 13px; color: #909399; white-space: nowrap; width: 70px">自定义模板</span>
+                  <el-select v-model="selectedCustomId" placeholder="选择自定义模板" style="flex: 1" clearable @change="onCustomSelect">
+                    <el-option v-for="tpl in customTemplates" :key="tpl.id" :label="tpl.name" :value="tpl.id" />
+                  </el-select>
+                  <el-button size="small" type="primary" @click="openNewTemplateDialog">新建</el-button>
+                  <el-button size="small" @click="openTemplateEditor(selectedCustomId)" :disabled="!selectedCustomId">编辑</el-button>
+                  <el-button size="small" type="danger" @click="deleteCustomTemplateById(selectedCustomId)" :disabled="!selectedCustomId">删除</el-button>
+                </div>
               </div>
             </el-form-item>
             <el-form-item label="输出文件名">
@@ -127,7 +141,28 @@
 
     <!-- 模板编辑器弹窗 -->
     <ChapterTreeEditor v-if="showTemplateEditor" v-model="showTemplateEditor"
-      :template-id="form.templateId" @saved="onTemplateSaved" />
+      :template-id="editingTemplateId" @saved="onTemplateSaved" />
+
+    <!-- 新建自定义模板弹窗 -->
+    <el-dialog v-model="showNewTemplateDialog" title="新建自定义模板" width="450px" :close-on-click-modal="false">
+      <el-form label-width="80px" size="default">
+        <el-form-item label="模板名称" required>
+          <el-input v-model="newTemplateForm.name" placeholder="例如：我的测试模板" maxlength="50" />
+        </el-form-item>
+        <el-form-item label="关联类型">
+          <el-select v-model="newTemplateForm.doc_type" placeholder="选择文档类型（可选）" style="width: 100%" clearable>
+            <el-option v-for="item in docTypes" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="newTemplateForm.description" type="textarea" :rows="2" placeholder="模板用途说明（可选）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showNewTemplateDialog = false">取消</el-button>
+        <el-button type="primary" @click="createNewTemplate">创建并编辑章节</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 预览弹窗 -->
     <el-dialog v-model="showPreview" :title="previewTitle" width="85%" top="20px" destroy-on-close>
@@ -191,7 +226,6 @@ const docTypes = [
   { value: 'tc', label: '测试用例' },
   { value: 'tr', label: '测试记录' },
   { value: 'trep', label: '测试报告' },
-  { value: 'custom', label: '自定义文档' },
 ]
 
 const form = reactive({
@@ -206,9 +240,24 @@ const uploadUrl = '/api/files/upload'
 const uploadHeaders = {}
 
 const referenceFiles = ref([])
-const templateOptions = ref([])
-const downloading = ref(false)
+const templates = ref([])           // 所有模板列表
+const presetTemplates = ref([])     // 预设模板
+const customTemplates = ref([])     // 自定义模板
+const selectedCustomId = ref('')    // 当前选中的自定义模板ID
 const showTemplateEditor = ref(false)
+const editingTemplateId = ref('')   // 当前编辑的模板ID
+const showNewTemplateDialog = ref(false)
+const newTemplateForm = reactive({
+  name: '',
+  description: '',
+  doc_type: '',
+})
+
+const downloading = ref(false)
+
+const isPresetSelected = computed(() => {
+  return presetTemplates.value.some(t => t.id === form.templateId)
+})
 
 // 预览弹窗
 const showPreview = ref(false)
@@ -220,7 +269,7 @@ const headings = ref([])           // 提取的标题列表 [{level, text, eleme
 const activeHeadingIndex = ref(-1) // 当前激活的标题索引
 const navCollapsed = ref(false)    // 导航是否折叠
 
-const canGenerate = computed(() => form.docType && form.templateId)
+const canGenerate = computed(() => form.docType && (form.templateId || selectedCustomId.value))
 
 onMounted(async () => {
   await loadReferenceFiles()
@@ -245,20 +294,108 @@ async function loadTemplates() {
   try {
     const res = await templateApi.list()
     const items = res.data?.items || []
-    templateOptions.value = items.map(t => ({
-      value: t.id,
-      label: `${t.name} (${t.chapter_count}章)`,
-      doc_type: t.doc_type,
+    templates.value = items.map(t => ({
+      ...t,
+      label: t.name,
+      chapterCount: t.chapter_count,
     }))
+    // 分组
+    presetTemplates.value = templates.value.filter(t => t.is_preset)
+    customTemplates.value = templates.value.filter(t => !t.is_preset)
   } catch (e) {
     console.error('加载模板失败', e)
   }
 }
 
 function onDocTypeChange(docType) {
-  if (!docType) return
-  const match = templateOptions.value.find(t => t.doc_type === docType)
-  form.templateId = match?.value || ''
+  if (!docType) {
+    form.templateId = ''
+    selectedCustomId.value = ''
+    return
+  }
+  // 自动匹配该类型的预设模板
+  const match = presetTemplates.value.find(t => t.doc_type === docType)
+  form.templateId = match?.id || ''
+  selectedCustomId.value = ''
+}
+
+function onPresetSelect(val) {
+  // 选了预设模板，取消自定义模板选择
+  selectedCustomId.value = ''
+}
+
+function onCustomSelect(val) {
+  // 选了自定义模板，取消预设模板选择
+  if (val) {
+    form.templateId = ''
+  }
+}
+
+function openTemplateEditor(templateId) {
+  if (!templateId) return
+  editingTemplateId.value = templateId
+  showTemplateEditor.value = true
+}
+
+async function deleteCustomTemplateById(templateId) {
+  if (!templateId) return
+  const tpl = customTemplates.value.find(t => t.id === templateId)
+  if (!tpl) return
+  try {
+    await ElMessageBox.confirm(`确定要删除自定义模板「${tpl.name}」吗？`, '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await templateApi.delete(templateId)
+    ElMessage.success('自定义模板已删除')
+    selectedCustomId.value = ''
+    await loadTemplates()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+}
+
+async function createNewTemplate() {
+  if (!newTemplateForm.name.trim()) {
+    ElMessage.warning('请输入模板名称')
+    return
+  }
+  try {
+    const res = await templateApi.create({
+      name: newTemplateForm.name.trim(),
+      doc_type: newTemplateForm.doc_type || form.docType || 'srs',
+      description: newTemplateForm.description.trim(),
+      chapters: [],
+    })
+    ElMessage.success('自定义模板创建成功')
+    showNewTemplateDialog.value = false
+    newTemplateForm.name = ''
+    newTemplateForm.description = ''
+    newTemplateForm.doc_type = ''
+    await loadTemplates()
+    // 自动选中新模板
+    selectedCustomId.value = res.data.id
+    form.templateId = ''
+    // 打开编辑器让用户编辑章节
+    openTemplateEditor(res.data.id)
+  } catch (e) {
+    ElMessage.error('创建失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+function openNewTemplateDialog() {
+  newTemplateForm.name = ''
+  newTemplateForm.description = ''
+  newTemplateForm.doc_type = form.docType || ''
+  showNewTemplateDialog.value = true
+}
+
+function onTemplateSaved() {
+  showTemplateEditor.value = false
+  loadTemplates()
 }
 
 function onUploadSuccess(response) {
@@ -281,9 +418,10 @@ async function startGeneration() {
   store.chapterList = []
 
   // 保存当前表单数据，用于页面切换回来时恢复
+  const activeTemplateId = form.templateId || selectedCustomId.value
   store.currentTaskData = {
     doc_type: form.docType,
-    template_id: form.templateId,
+    template_id: activeTemplateId,
     output_filename: form.outputFilename,
     global_requirements: form.globalRequirements,
     reference_file_ids: form.referenceFileIds,
@@ -294,7 +432,7 @@ async function startGeneration() {
       doc_type: form.docType,
       output_filename: form.outputFilename,
       global_requirements: form.globalRequirements,
-      template_id: form.templateId,
+      template_id: activeTemplateId,
       reference_file_ids: form.referenceFileIds,
     })
     store.connectWebSocket(res.data.id)
@@ -367,14 +505,6 @@ async function downloadWord() {
   }
 }
 
-function onTemplateSaved(newTemplateId) {
-  showTemplateEditor.value = false
-  loadTemplates()
-  if (newTemplateId) {
-    form.templateId = newTemplateId
-  }
-}
-
 // 从 store 中保存的任务数据恢复表单
 function restoreFormFromTask() {
   const task = store.currentTaskData
@@ -384,7 +514,14 @@ function restoreFormFromTask() {
     form.docType = task.doc_type
   }
   if (task.template_id) {
-    form.templateId = task.template_id
+    const isPreset = presetTemplates.value.some(t => t.id === task.template_id)
+    if (isPreset) {
+      form.templateId = task.template_id
+      selectedCustomId.value = ''
+    } else {
+      selectedCustomId.value = task.template_id
+      form.templateId = ''
+    }
   }
   if (task.output_filename) {
     form.outputFilename = task.output_filename

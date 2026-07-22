@@ -31,6 +31,8 @@ async def init_db():
         await _migrate_add_total_chapters(conn)
         # 迁移：添加 updated_at 列（如果不存在）
         await _migrate_add_updated_at(conn)
+        # 迁移：将已有种子模板标记为 is_preset
+        await _migrate_mark_preset_templates(conn)
 
     # 种子数据：为每个文档类型创建默认模板
     await _seed_default_templates()
@@ -56,8 +58,28 @@ async def _migrate_add_updated_at(conn):
         pass  # 列已存在，忽略
 
 
+async def _migrate_mark_preset_templates(conn):
+    """迁移：将已有种子模板的 is_preset 标记为 1（如果 is_preset 列不存在则先添加）"""
+    try:
+        await conn.exec_driver_sql(
+            "ALTER TABLE document_templates ADD COLUMN is_preset BOOLEAN DEFAULT 0"
+        )
+    except Exception:
+        pass  # 列已存在，忽略
+    # 将 9 种预设类型的模板标记为预设
+    from backend.services.template_presets import PRESET_TEMPLATES
+    for doc_type in PRESET_TEMPLATES:
+        await conn.exec_driver_sql(
+            f"UPDATE document_templates SET is_preset = 1 WHERE doc_type = '{doc_type}' AND is_preset = 0"
+        )
+    # 删除旧的 "custom" 预设模板（不再作为预设类型）
+    await conn.exec_driver_sql(
+        "DELETE FROM document_templates WHERE doc_type = 'custom' AND is_preset = 1"
+    )
+
+
 async def _seed_default_templates():
-    """检查并创建默认模板（每个文档类型一个）"""
+    """检查并创建默认模板（每个文档类型一个预设模板）"""
     from backend.models.template import DocumentTemplate, ChapterNode
     from backend.services.template_presets import PRESET_TEMPLATES
 
@@ -65,7 +87,10 @@ async def _seed_default_templates():
         seeded = False
         for doc_type, preset in PRESET_TEMPLATES.items():
             existing = await db.execute(
-                select(DocumentTemplate).where(DocumentTemplate.doc_type == doc_type).limit(1)
+                select(DocumentTemplate).where(
+                    DocumentTemplate.doc_type == doc_type,
+                    DocumentTemplate.is_preset == True,
+                ).limit(1)
             )
             if existing.scalar():
                 continue
@@ -74,6 +99,7 @@ async def _seed_default_templates():
                 name=preset["name"],
                 doc_type=doc_type,
                 description=preset["description"],
+                is_preset=True,
             )
             db.add(template)
             await db.flush()

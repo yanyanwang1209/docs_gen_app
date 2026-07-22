@@ -564,12 +564,6 @@ PRESET_TEMPLATES = {
             },
         ],
     },
-"custom": {
-        "name": "自定义文档",
-        "doc_type": "custom",
-        "description": "根据写作要求自由生成文档，不预设章节结构",
-        "chapters": [],
-    },
 }
 
 
@@ -603,5 +597,4 @@ DOC_TYPE_LABELS = {
     "tc": "测试用例",
     "tr": "测试记录",
     "trep": "测试报告",
-    "custom": "自定义文档",
 }

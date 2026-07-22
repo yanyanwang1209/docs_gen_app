@@ -57,18 +57,69 @@
         </div>
       </div>
     </div>
+
+    <!-- 转换历史 -->
+    <el-card shadow="never" style="margin-top: 24px" v-loading="historyLoading">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span style="font-weight: bold">转换历史</span>
+          <el-button size="small" type="danger" :disabled="!selectedHistory.length" @click="batchDeleteHistory">
+            批量删除 ({{ selectedHistory.length }})
+          </el-button>
+        </div>
+      </template>
+      <el-table :data="historyFiles" style="width: 100%" size="small" @selection-change="onHistorySelectionChange">
+        <el-table-column type="selection" width="45" />
+        <el-table-column prop="original_name" label="文件名" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="file_size" label="大小" width="100">
+          <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="转换时间" width="170">
+          <template #default="{ row }">{{ row.created_at?.slice(0, 19).replace('T', ' ') }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" @click="downloadHistory(row)">下载</el-button>
+            <el-button size="small" type="danger" @click="deleteHistory(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!historyFiles.length" description="暂无转换记录" :image-size="60" />
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { md2wordApi } from '../api/md2word'
+import { fileApi } from '../api/files'
 
 const mdFile = ref(null)
 const mdText = ref('')
 const outputFilename = ref('')
 const converting = ref(false)
+
+// 转换历史
+const historyFiles = ref([])
+const historyLoading = ref(false)
+const selectedHistory = ref([])
+
+onMounted(() => {
+  loadHistory()
+})
+
+async function loadHistory() {
+  historyLoading.value = true
+  try {
+    const res = await fileApi.list({ category: 'generated', page_size: 100 })
+    historyFiles.value = res.data?.items || []
+  } catch (e) {
+    console.error('加载转换历史失败', e)
+  } finally {
+    historyLoading.value = false
+  }
+}
 
 function onFileChange(file) {
   mdFile.value = file.raw
@@ -87,6 +138,7 @@ async function convertFile() {
     const res = await md2wordApi.convertFile(formData)
     downloadBlob(res.data, outputFilename.value || mdFile.value.name.replace(/\.\w+$/, '') + '.docx')
     ElMessage.success('转换成功')
+    await loadHistory()
   } catch (e) {
     ElMessage.error('转换失败: ' + (e.response?.data?.detail || e.message))
   } finally {
@@ -103,11 +155,68 @@ async function convertText() {
     const res = await md2wordApi.convertText(formData)
     downloadBlob(res.data, (outputFilename.value || 'converted_document') + '.docx')
     ElMessage.success('转换成功')
+    await loadHistory()
   } catch (e) {
     ElMessage.error('转换失败: ' + (e.response?.data?.detail || e.message))
   } finally {
     converting.value = false
   }
+}
+
+function downloadHistory(row) {
+  fileApi.download(row.id).then(res => {
+    downloadBlob(res.data, row.original_name)
+  }).catch(() => {
+    ElMessage.error('下载失败')
+  })
+}
+
+async function deleteHistory(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.original_name}」吗？`, '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await fileApi.delete(row.id)
+    ElMessage.success('已删除')
+    await loadHistory()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
+function onHistorySelectionChange(selection) {
+  selectedHistory.value = selection
+}
+
+async function batchDeleteHistory() {
+  if (!selectedHistory.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selectedHistory.value.length} 个文件吗？`, '批量删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    const ids = selectedHistory.value.map(f => f.id)
+    await fileApi.batchDelete(ids)
+    ElMessage.success(`已删除 ${ids.length} 个文件`)
+    selectedHistory.value = []
+    await loadHistory()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('批量删除失败')
+    }
+  }
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function downloadBlob(blob, filename) {

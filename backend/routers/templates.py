@@ -97,12 +97,15 @@ def _save_chapter_tree(
 @router.get("", response_model=TemplateList)
 async def list_templates(
     doc_type: str = Query(None, description="按文档类型筛选"),
+    is_preset: bool = Query(None, description="按预设/自定义筛选"),
     db: AsyncSession = Depends(get_db),
 ):
     """获取模板列表"""
     query = select(DocumentTemplate)
     if doc_type:
         query = query.where(DocumentTemplate.doc_type == doc_type)
+    if is_preset is not None:
+        query = query.where(DocumentTemplate.is_preset == is_preset)
     query = query.order_by(DocumentTemplate.updated_at.desc())
 
     result = await db.execute(query)
@@ -183,10 +186,12 @@ async def update_template(
 
 @router.delete("/{template_id}")
 async def delete_template(template_id: str, db: AsyncSession = Depends(get_db)):
-    """删除模板"""
+    """删除模板（预设模板不可删除）"""
     template = await db.get(DocumentTemplate, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="模板不存在")
+    if template.is_preset:
+        raise HTTPException(status_code=403, detail="预设模板不可删除，但可以编辑调整")
 
     await db.delete(template)
     await db.commit()
