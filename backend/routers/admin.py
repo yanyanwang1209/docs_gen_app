@@ -1,7 +1,7 @@
 """管理员 API 路由 — 用户管理"""
 import secrets
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -21,6 +21,10 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(default="", min_length=0, max_length=256)
 
 
+class BatchDeleteRequest(BaseModel):
+    user_ids: list[str] = Field(..., min_length=1)
+
+
 def require_admin(request: Request):
     """要求管理员权限"""
     user = getattr(request.state, "user", None)
@@ -29,11 +33,20 @@ def require_admin(request: Request):
 
 
 @router.get("/users")
-async def list_users(request: Request, db: AsyncSession = Depends(get_db)):
-    """列出所有用户（仅管理员）"""
+async def list_users(
+    request: Request,
+    search: str = Query("", description="搜索用户名"),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出所有用户（仅管理员），支持按用户名搜索"""
     require_admin(request)
 
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    query = select(User)
+    if search:
+        query = query.where(User.username.contains(search))
+    query = query.order_by(User.created_at.desc())
+
+    result = await db.execute(query)
     users = result.scalars().all()
 
     return {
@@ -84,6 +97,47 @@ async def delete_user(user_id: str, request: Request, db: AsyncSession = Depends
 
     logger.info("管理员删除了用户: %s", user.username)
     return {"ok": True, "message": f"用户 {user.username} 已删除"}
+
+
+@router.post("/users/batch-delete")
+async def batch_delete_users(data: BatchDeleteRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """批量删除用户（仅管理员）"""
+    require_admin(request)
+
+    deleted = []
+    skipped = []
+
+    for user_id in data.user_ids:
+        user = await db.get(User, user_id)
+        if not user:
+            skipped.append({"user_id": user_id, "reason": "用户不存在"})
+            continue
+        if user.is_admin:
+            skipped.append({"user_id": user_id, "reason": "不能删除管理员"})
+            continue
+
+        # 删除关联数据
+        user_templates = await db.execute(
+            select(DocumentTemplate.id).where(DocumentTemplate.owner_id == user_id)
+        )
+        template_ids = [row[0] for row in user_templates.fetchall()]
+        for tid in template_ids:
+            await db.execute(delete(ChapterNode).where(ChapterNode.template_id == tid))
+            await db.execute(delete(DocumentTemplate).where(DocumentTemplate.id == tid))
+
+        await db.execute(delete(ManagedFile).where(ManagedFile.owner_id == user_id))
+        await db.execute(delete(GenerationTask).where(GenerationTask.owner_id == user_id))
+        await db.delete(user)
+        deleted.append(user_id)
+        logger.info("管理员批量删除用户: %s", user.username)
+
+    await db.commit()
+    return {
+        "ok": True,
+        "deleted": len(deleted),
+        "deleted_ids": deleted,
+        "skipped": skipped,
+    }
 
 
 @router.post("/users/{user_id}/reset-password")

@@ -2,7 +2,40 @@
   <div class="admin-page">
     <h2 style="margin: 0 0 20px 0; font-size: 20px; color: #303133">用户管理</h2>
 
-    <el-table :data="users" stripe style="width: 100%" v-loading="loading">
+    <!-- 搜索栏 + 批量操作 -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px">
+      <div style="display: flex; gap: 8px; align-items: center">
+        <el-input
+          v-model="searchText"
+          placeholder="搜索用户名"
+          clearable
+          style="width: 240px"
+          @clear="loadUsers"
+          @keyup.enter="loadUsers"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="loadUsers">搜索</el-button>
+      </div>
+      <el-button
+        type="danger"
+        :disabled="selectedIds.length === 0"
+        @click="batchDelete"
+      >
+        批量删除（{{ selectedIds.length }}）
+      </el-button>
+    </div>
+
+    <el-table
+      :data="users"
+      stripe
+      style="width: 100%"
+      v-loading="loading"
+      @selection-change="handleSelectionChange"
+    >
+      <el-table-column type="selection" width="50" :selectable="row => !row.is_admin" />
       <el-table-column prop="username" label="用户名" min-width="150" />
       <el-table-column prop="is_admin" label="角色" width="100">
         <template #default="{ row }">
@@ -40,17 +73,24 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import { adminApi } from '../api/admin'
 
 const users = ref([])
 const loading = ref(false)
+const searchText = ref('')
+const selectedIds = ref([])
 
 onMounted(() => loadUsers())
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
+}
 
 async function loadUsers() {
   loading.value = true
   try {
-    const res = await adminApi.getUsers()
+    const res = await adminApi.getUsers(searchText.value.trim() || '')
     users.value = res.data.items || []
   } catch (e) {
     ElMessage.error('加载用户列表失败: ' + (e.response?.data?.detail || e.message))
@@ -97,10 +137,34 @@ async function deleteUser(row) {
     )
     await adminApi.deleteUser(row.id)
     ElMessage.success(`用户「${row.username}」已删除`)
+    selectedIds.value = []
     await loadUsers()
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
       ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+}
+
+async function batchDelete() {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedIds.value.length} 个用户吗？此操作将同时删除这些用户的所有模板、文件和生成任务，不可恢复。`,
+      '批量删除',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    const res = await adminApi.batchDeleteUsers(selectedIds.value)
+    const msg = `成功删除 ${res.data.deleted} 个用户`
+    if (res.data.skipped?.length) {
+      ElMessage.warning(msg + `，${res.data.skipped.length} 个被跳过（管理员或不存在）`)
+    } else {
+      ElMessage.success(msg)
+    }
+    selectedIds.value = []
+    await loadUsers()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('批量删除失败: ' + (e.response?.data?.detail || e.message))
     }
   }
 }

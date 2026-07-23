@@ -2,7 +2,7 @@
   <div id="app">
     <el-container style="min-height: 100vh">
       <!-- 侧边栏 -->
-      <el-aside width="220px" style="background: #304156; display: flex; flex-direction: column">
+      <el-aside v-if="!isLoginPage" width="220px" style="background: #304156; display: flex; flex-direction: column">
         <div style="height: 60px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(255,255,255,0.1)">
           <h1 style="color: white; margin: 0; font-size: 17px; white-space: nowrap">
             <el-icon style="margin-right: 6px"><Document /></el-icon>
@@ -39,7 +39,7 @@
           </el-menu-item>
         </el-menu>
         <!-- 底部用户信息 -->
-        <div style="padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); color: #bfcbd9; font-size: 13px">
+        <div v-if="isLoggedIn" style="padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); color: #bfcbd9; font-size: 13px">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
             <el-icon><User /></el-icon>
             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ username }}</span>
@@ -92,6 +92,8 @@ const currentRoute = computed(() => route.hash ? route.hash.slice(1) : route.pat
 
 const username = ref(getStoredUsername())
 const isAdmin = ref(getStoredIsAdmin())
+const isLoggedIn = ref(!!localStorage.getItem('token'))
+const isLoginPage = computed(() => route.path === '/login')
 
 const showChangePasswordDialog = ref(false)
 const changingPassword = ref(false)
@@ -111,8 +113,9 @@ function getStoredIsAdmin() {
   return user.is_admin || false
 }
 
-// 路由变化时刷新用户名（登录后跳转会触发）
+// 路由变化时刷新登录状态和用户名（登录后跳转会触发）
 watch(() => route.fullPath, () => {
+  isLoggedIn.value = !!localStorage.getItem('token')
   username.value = getStoredUsername()
   isAdmin.value = getStoredIsAdmin()
 })
