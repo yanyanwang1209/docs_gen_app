@@ -26,6 +26,9 @@ export const generationApi = {
   deleteTask(id) {
     return api.delete(`/generation/${id}`)
   },
+  cancelTask(id) {
+    return api.post(`/generation/${id}/cancel`)
+  },
   getWsUrl(taskId) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${protocol}//${window.location.host}/api/generation/${taskId}/progress`

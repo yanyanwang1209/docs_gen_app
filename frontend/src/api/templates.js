@@ -21,4 +21,9 @@ export const templateApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  aiAnalyze(formData) {
+    return api.post('/templates/ai-analyze', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

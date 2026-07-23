@@ -75,7 +75,14 @@
       <el-col :span="12">
         <!-- 生成进度 -->
         <el-card v-if="store.generating || store.generationResult" shadow="never" style="margin-bottom: 16px">
-          <template #header><span style="font-weight: bold">生成进度</span></template>
+          <template #header>
+            <div style="display: flex; align-items: center; justify-content: space-between">
+              <span style="font-weight: bold">生成进度</span>
+              <el-button v-if="store.generating" type="danger" size="small" @click="cancelGeneration" :loading="cancelling">
+                终止生成
+              </el-button>
+            </div>
+          </template>
           <div v-if="store.progress">
             <el-progress
               :percentage="store.progress.total_chapters ? Math.round(store.progress.completed_chapters / store.progress.total_chapters * 100) : 0"
@@ -87,7 +94,7 @@
           </div>
 
           <!-- 章节列表 -->
-          <div v-if="store.chapterList.length" style="margin-top: 12px">
+          <div v-if="store.chapterList.length" style="margin-top: 12px; max-height: 400px; overflow-y: auto">
             <div v-for="ch in store.chapterList" :key="ch.id"
               style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #f0f0f0; font-size: 13px">
               <div style="display: flex; align-items: center; gap: 8px">
@@ -242,6 +249,7 @@ const newTemplateForm = reactive({
 })
 
 const downloading = ref(false)
+const cancelling = ref(false)
 
 const isPresetSelected = computed(() => {
   const tpl = templates.value.find(t => t.id === form.templateId)
@@ -448,6 +456,28 @@ async function startGeneration() {
     store.generating = false
     store.currentTaskData = null
     ElMessage.error('启动生成失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function cancelGeneration() {
+  if (!store.currentTaskId) return
+  try {
+    await ElMessageBox.confirm('确定要终止当前文档生成吗？已生成的内容将保留。', '确认终止', {
+      confirmButtonText: '终止',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    cancelling.value = true
+    await generationApi.cancelTask(store.currentTaskId)
+    store.generating = false
+    store.progress = { status: 'failed', message: '用户取消生成' }
+    ElMessage.warning('文档生成已终止')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('终止失败: ' + (e.response?.data?.detail || e.message))
+    }
+  } finally {
+    cancelling.value = false
   }
 }
 

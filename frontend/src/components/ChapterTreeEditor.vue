@@ -10,9 +10,23 @@
     <div v-loading="loading" style="display: flex; gap: 16px; min-height: 400px">
       <!-- 左侧：章节树 -->
       <div style="width: 350px; border-right: 1px solid #ebeef5; overflow-y: auto; padding-right: 8px">
-        <div style="margin-bottom: 8px; display: flex; gap: 4px">
+        <div style="margin-bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap">
           <el-button size="small" @click="addChapter(null)">添加章节</el-button>
           <el-button size="small" @click="autoNumber">自动编号</el-button>
+          <el-button v-if="!isPreset" size="small" type="warning" @click="triggerAiAnalyze" :loading="aiAnalyzing">
+            <el-icon style="margin-right: 2px"><MagicStick /></el-icon>
+            AI 分析
+          </el-button>
+          <el-tooltip v-if="!isPreset" content="上传文档（.docx/.pdf/.txt/.md），由 AI 自动分析文档内容并生成章节结构，每个章节会自动填写内容提示语" placement="top">
+            <el-icon style="margin-left: 2px; color: #909399; cursor: help; font-size: 16px"><QuestionFilled /></el-icon>
+          </el-tooltip>
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept=".docx,.pdf,.txt,.md"
+            style="display: none"
+            @change="onAiFileSelected"
+          />
         </div>
         <el-tree
           v-if="treeData.length"
@@ -21,6 +35,7 @@
           node-key="id"
           default-expand-all
           highlight-current
+          :expand-on-click-node="false"
           @node-click="onNodeClick"
           draggable
           :allow-drop="allowDrop"
@@ -120,7 +135,8 @@
 
 <script setup>
 import { ref, reactive, watch, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { MagicStick, QuestionFilled } from '@element-plus/icons-vue'
 import { templateApi } from '../api/templates'
 
 const props = defineProps({
@@ -132,6 +148,7 @@ const emit = defineEmits(['update:modelValue', 'saved'])
 
 const treeData = ref([])
 const selectedNode = ref(null)
+const isPreset = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const tableConfig = reactive({
@@ -143,6 +160,8 @@ const tableConfig = reactive({
 
 let nodeMap = {}
 const cellInputRefs = {}
+const fileInputRef = ref(null)
+const aiAnalyzing = ref(false)
 
 function setCellInputRef(row, col, el) {
   if (el) cellInputRefs[`${row}_${col}`] = el
@@ -160,6 +179,7 @@ async function loadTemplate() {
   try {
     const res = await templateApi.get(props.templateId)
     treeData.value = JSON.parse(JSON.stringify(res.data.chapters || []))
+    isPreset.value = res.data.is_preset || false
     buildNodeMap(treeData.value)
     selectedNode.value = null
   } catch (e) {
@@ -346,6 +366,76 @@ function syncTableConfigToNode() {
       fixed_cells: tableConfig.fixed_cells,
     }
   }
+}
+
+function triggerAiAnalyze() {
+  fileInputRef.value?.click()
+}
+
+async function onAiFileSelected(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // 如果已有章节，弹出确认
+  if (treeData.value.length > 0) {
+    try {
+      await ElMessageBox.confirm(
+        'AI 分析将覆盖当前章节结构，是否继续？',
+        '确认覆盖',
+        { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      // 用户取消，重置 file input
+      if (fileInputRef.value) fileInputRef.value.value = ''
+      return
+    }
+  }
+
+  aiAnalyzing.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await templateApi.aiAnalyze(formData)
+    const chapters = res.data?.chapters || []
+
+    if (!chapters.length) {
+      ElMessage.warning('AI 未分析出章节结构，请尝试其他文档')
+      return
+    }
+
+    // 给每个节点生成临时 ID
+    function assignIds(nodes) {
+      for (const node of nodes) {
+        node.id = 'ai_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+        node.sort_order = 0
+        if (node.children?.length) {
+          assignIds(node.children)
+        }
+      }
+    }
+    assignIds(chapters)
+
+    treeData.value = chapters
+    buildNodeMap(treeData.value)
+    selectedNode.value = null
+    ElMessage.success(`AI 已分析生成 ${countNodes(chapters)} 个章节`)
+  } catch (e) {
+    ElMessage.error('AI 分析失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    aiAnalyzing.value = false
+    if (fileInputRef.value) fileInputRef.value.value = ''
+  }
+}
+
+function countNodes(nodes) {
+  let count = 0
+  for (const node of nodes) {
+    count++
+    if (node.children?.length) {
+      count += countNodes(node.children)
+    }
+  }
+  return count
 }
 
 async function saveTemplate() {

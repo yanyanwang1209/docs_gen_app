@@ -382,3 +382,28 @@ async def delete_task(task_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(task)
     await db.commit()
     return {"ok": True, "message": "任务已删除"}
+
+
+@router.post("/{task_id}/cancel")
+async def cancel_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    """终止正在进行的生成任务"""
+    task = await db.get(GenerationTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    if task.status not in ("generating", "pending"):
+        raise HTTPException(status_code=400, detail="任务不在生成中")
+
+    # 取消引擎
+    if task_id in _active_engines:
+        _active_engines[task_id].cancel()
+        del _active_engines[task_id]
+    if task_id in _active_tasks:
+        _active_tasks[task_id].cancel()
+        del _active_tasks[task_id]
+
+    task.status = "failed"
+    task.error_message = "用户取消生成"
+    await db.commit()
+
+    return {"ok": True, "message": "任务已终止"}

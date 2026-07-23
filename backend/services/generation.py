@@ -105,6 +105,22 @@ class GenerationEngine:
             # 4. LLM 客户端
             llm = self._get_llm()
 
+            # 4.1 快速连接预检，避免 LLM 配置错误时长时间等待
+            conn_test = await llm.test_connection()
+            if not conn_test.get("ok"):
+                error_msg = f"LLM 连接失败: {conn_test.get('message', '未知错误')}。请检查 LLM 配置（base_url、api_key、model）是否正确。"
+                task.status = "failed"
+                task.error_message = error_msg
+                await db.commit()
+                await self._push_progress({
+                    "task_id": self.task_id,
+                    "status": "failed",
+                    "total_chapters": 0,
+                    "completed_chapters": 0,
+                    "message": error_msg,
+                })
+                return ""
+
             # 5. 需要生成内容的章节数
             generating_chapters = [ch for ch in flat_queue if not ch["title_only"]]
             total = len(generating_chapters)
