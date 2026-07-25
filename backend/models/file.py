@@ -9,8 +9,9 @@ import enum
 
 
 class FileCategory(str, enum.Enum):
-    reference = "reference"  # 上传的参考文件
-    generated = "generated"  # 生成的文档
+    reference = "reference"    # 上传的参考文件
+    generated = "generated"    # 系统生成的文档
+    converted = "converted"    # MD 转 Word 转换的文档
 
 
 class ManagedFile(Base):

@@ -32,3 +32,4 @@ Thumbs.db
 # Backup
 *.tar.gz
 *.zip
+wheels/

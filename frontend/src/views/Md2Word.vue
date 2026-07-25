@@ -112,7 +112,7 @@ onMounted(() => {
 async function loadHistory() {
   historyLoading.value = true
   try {
-    const res = await fileApi.list({ category: 'generated', page_size: 100 })
+    const res = await fileApi.list({ category: 'converted', page_size: 100 })
     historyFiles.value = res.data?.items || []
   } catch (e) {
     console.error('加载转换历史失败', e)

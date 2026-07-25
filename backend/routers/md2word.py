@@ -75,7 +75,7 @@ async def _convert_and_save(content: str, filename: str, user_id: str | None, db
         filename=word_filename,
         original_name=word_filename,
         file_type="docx",
-        category=FileCategory.generated,
+        category=FileCategory.converted,
         file_size=len(word_bytes),
         storage_path=word_path,
         owner_id=user_id,

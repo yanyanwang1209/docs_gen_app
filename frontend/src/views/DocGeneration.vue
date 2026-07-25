@@ -1,6 +1,17 @@
 <template>
   <div class="doc-generation">
-    <h2 style="margin: 0 0 20px 0; font-size: 20px; color: #303133">文档生成</h2>
+    <div style="display: flex; align-items: center; margin-bottom: 20px">
+      <h2 style="margin: 0; font-size: 20px; color: #303133">文档生成</h2>
+      <span style="color: #606266; font-size: 14px; font-weight: 600; margin-left: 20px">使用说明书</span>
+      <el-button size="small" text type="primary" @click="openManualPreview" style="margin: 0; padding: 0 6px">
+        <el-icon style="margin-right: 2px"><View /></el-icon>
+        预览
+      </el-button>
+      <el-button size="small" text type="primary" @click="downloadManual" style="margin: 0; padding: 0 6px">
+        <el-icon style="margin-right: 2px"><Download /></el-icon>
+        下载
+      </el-button>
+    </div>
 
     <el-row :gutter="20">
       <!-- 左侧：配置区 -->
@@ -104,7 +115,7 @@
                 <el-icon v-else color="#c0c4cc"><Clock /></el-icon>
                 <span :style="{ color: ch._status === 'failed' ? '#f56c6c' : '#333' }">{{ ch.title }}</span>
               </div>
-              <el-button v-if="ch._status === 'completed' && !store.generating"
+              <el-button v-if="ch._status === 'completed' && !store.generating && !ch.title_only"
                 type="warning" size="small" :loading="ch._retrying"
                 @click="retryChapter(ch.id)">重新生成</el-button>
               <el-button v-if="ch._status === 'failed' && !store.generating"
@@ -195,9 +206,47 @@
           </div>
         </div>
         <!-- 预览内容 -->
-        <div class="markdown-preview" ref="previewContentRef" @scroll="onPreviewScroll" v-html="previewHtml" />
+        <div class="markdown-preview" ref="previewContentRef" @scroll="onPreviewScroll" @click="onPreviewClick" v-html="previewHtml" />
       </div>
       <el-empty v-else description="暂无内容" />
+    </el-dialog>
+
+    <!-- 使用说明书预览弹窗 -->
+    <el-dialog v-model="showManualPreview" title="使用说明书" width="85%" top="20px" destroy-on-close>
+      <div v-if="manualLoading" style="text-align: center; padding: 40px">
+        <el-icon class="is-loading" style="font-size: 32px; color: #409eff"><Loading /></el-icon>
+        <p style="margin-top: 12px; color: #999">加载中...</p>
+      </div>
+      <div v-else-if="manualHtml" style="display: flex; gap: 0; height: 70vh">
+        <!-- 标题导航侧边栏 -->
+        <div class="heading-nav" :class="{ collapsed: manualNavCollapsed }">
+          <div class="heading-nav-header">
+            <span v-show="!manualNavCollapsed" style="font-weight: 600; font-size: 14px">文档导航</span>
+            <span @click="manualNavCollapsed = !manualNavCollapsed" class="nav-toggle-btn" :title="manualNavCollapsed ? '展开导航' : '收起导航'">
+              {{ manualNavCollapsed ? '▶' : '◀' }}
+            </span>
+          </div>
+          <div v-show="!manualNavCollapsed" class="heading-nav-list">
+            <div v-if="!manualHeadings.length" style="color: #999; font-size: 12px; text-align: center; padding: 20px 0">
+              未检测到标题
+            </div>
+            <div
+              v-for="(h, idx) in manualHeadings"
+              :key="idx"
+              class="heading-nav-item"
+              :class="{ active: manualActiveHeadingIndex === idx }"
+              :style="{ paddingLeft: Math.min((h.level - 1) * 16 + 12, 60) + 'px' }"
+              :title="h.text"
+              @click="scrollToManualHeading(idx)"
+            >
+              {{ h.text }}
+            </div>
+          </div>
+        </div>
+        <!-- 预览内容 -->
+        <div class="markdown-preview" ref="manualContentRef" @scroll="onManualPreviewScroll" @click="onPreviewClick" v-html="manualHtml" />
+      </div>
+      <el-empty v-else description="加载失败" />
     </el-dialog>
   </div>
 </template>
@@ -275,6 +324,15 @@ const previewContentRef = ref(null)
 const headings = ref([])           // 提取的标题列表 [{level, text, element}]
 const activeHeadingIndex = ref(-1) // 当前激活的标题索引
 const navCollapsed = ref(false)    // 导航是否折叠
+
+// 使用说明书预览
+const showManualPreview = ref(false)
+const manualLoading = ref(false)
+const manualHtml = ref('')
+const manualContentRef = ref(null)
+const manualHeadings = ref([])
+const manualActiveHeadingIndex = ref(-1)
+const manualNavCollapsed = ref(false)
 
 const canGenerate = computed(() => form.docType && form.templateId)
 
@@ -462,15 +520,14 @@ async function startGeneration() {
 async function cancelGeneration() {
   if (!store.currentTaskId) return
   try {
-    await ElMessageBox.confirm('确定要终止当前文档生成吗？已生成的内容将保留。', '确认终止', {
+    await ElMessageBox.confirm('确定要终止当前文档生成吗？', '确认终止', {
       confirmButtonText: '终止',
       cancelButtonText: '取消',
       type: 'warning',
     })
     cancelling.value = true
     await generationApi.cancelTask(store.currentTaskId)
-    store.generating = false
-    store.progress = { status: 'failed', message: '用户取消生成' }
+    store.reset()
     ElMessage.warning('文档生成已终止')
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
@@ -541,6 +598,78 @@ async function downloadWord() {
   } finally {
     downloading.value = false
   }
+}
+
+function downloadManual() {
+  const a = document.createElement('a')
+  a.href = '/使用说明书.md'
+  a.download = '验收文档生成器使用说明书.md'
+  a.click()
+}
+
+async function openManualPreview() {
+  showManualPreview.value = true
+  manualLoading.value = true
+  manualHtml.value = ''
+  manualHeadings.value = []
+  manualActiveHeadingIndex.value = -1
+  manualNavCollapsed.value = false
+  try {
+    const res = await fetch('/使用说明书.md')
+    const md = await res.text()
+    manualHtml.value = marked.parse(md)
+    await nextTick()
+    setTimeout(() => {
+      extractManualHeadings()
+    }, 100)
+  } catch {
+    manualHtml.value = '<p style="color: #f56c6c">加载失败</p>'
+  } finally {
+    manualLoading.value = false
+  }
+}
+
+function extractManualHeadings() {
+  const el = manualContentRef.value
+  if (!el) return
+  const headingEls = el.querySelectorAll('h1, h2, h3, h4, h5, h6')
+  const result = []
+  headingEls.forEach((h) => {
+    const level = parseInt(h.tagName.charAt(1))
+    const text = h.textContent || ''
+    if (text.trim()) {
+      const id = 'manual-heading-' + result.length
+      h.id = id
+      result.push({ level, text: text.trim(), id })
+    }
+  })
+  manualHeadings.value = result
+}
+
+function scrollToManualHeading(idx) {
+  const el = manualContentRef.value
+  if (!el) return
+  const target = el.querySelector('#manual-heading-' + idx)
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    manualActiveHeadingIndex.value = idx
+  }
+}
+
+function onManualPreviewScroll() {
+  const el = manualContentRef.value
+  if (!el || !manualHeadings.value.length) return
+  const scrollTop = el.scrollTop
+  let activeIdx = -1
+  const headingEls = el.querySelectorAll('[id^="manual-heading-"]')
+  for (let i = headingEls.length - 1; i >= 0; i--) {
+    const h = headingEls[i]
+    if (h.offsetTop <= scrollTop + 60) {
+      activeIdx = i
+      break
+    }
+  }
+  manualActiveHeadingIndex.value = activeIdx
 }
 
 // 从 store 中保存的任务数据恢复表单
@@ -641,6 +770,36 @@ function onPreviewScroll() {
     }
   }
   activeHeadingIndex.value = activeIdx
+}
+
+function onPreviewClick(e) {
+  // 拦截 markdown 渲染的锚点链接，阻止 Vue Router 路由跳转
+  const link = e.target.closest('a')
+  if (!link) return
+  const href = link.getAttribute('href')
+  if (!href || !href.startsWith('#')) return
+  e.preventDefault()
+  // 在预览内容区内查找对应标题并滚动
+  const el = e.currentTarget
+  // 找到 href 对应的标题文字，然后在预览区查找匹配的标题元素
+  const targetId = href.slice(1)
+  // 尝试通过 id 查找
+  let target = el.querySelector('#' + targetId)
+  if (!target) {
+    // 如果没有 id，尝试通过标题文字匹配（markdown 锚点可能是标题文字）
+    const headings = el.querySelectorAll('h1, h2, h3, h4, h5, h6')
+    for (const h of headings) {
+      // 对比标题文字（去除特殊字符后的 slug）
+      const slug = h.textContent.toLowerCase().replace(/[^\w一-鿿]+/g, '-').replace(/-+$/g, '')
+      if (slug === targetId.toLowerCase() || h.textContent.trim() === decodeURIComponent(targetId)) {
+        target = h
+        break
+      }
+    }
+  }
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 }
 </script>
 

@@ -7,9 +7,16 @@
     top="5vh"
     :close-on-click-modal="false"
   >
-    <div v-loading="loading" style="display: flex; gap: 16px; min-height: 400px">
+    <div v-loading="loading" style="display: flex; gap: 16px; height: 500px; overflow: hidden">
       <!-- 左侧：章节树 -->
       <div style="width: 350px; border-right: 1px solid #ebeef5; overflow-y: auto; padding-right: 8px">
+        <!-- 模板名称（仅非系统模板可编辑） -->
+        <div v-if="!isPreset" style="margin-bottom: 8px">
+          <el-input v-model="templateName" placeholder="模板名称" size="small" />
+        </div>
+        <div v-else style="margin-bottom: 8px; font-weight: bold; font-size: 14px; color: #303133">
+          {{ templateName }}
+        </div>
         <div style="margin-bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap">
           <el-button size="small" @click="addChapter(null)">添加章节</el-button>
           <el-button size="small" @click="autoNumber">自动编号</el-button>
@@ -149,6 +156,7 @@ const emit = defineEmits(['update:modelValue', 'saved'])
 const treeData = ref([])
 const selectedNode = ref(null)
 const isPreset = ref(false)
+const templateName = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const tableConfig = reactive({
@@ -180,6 +188,7 @@ async function loadTemplate() {
     const res = await templateApi.get(props.templateId)
     treeData.value = JSON.parse(JSON.stringify(res.data.chapters || []))
     isPreset.value = res.data.is_preset || false
+    templateName.value = res.data.name || ''
     buildNodeMap(treeData.value)
     selectedNode.value = null
   } catch (e) {
@@ -443,6 +452,7 @@ async function saveTemplate() {
   saving.value = true
   try {
     const res = await templateApi.update(props.templateId, {
+      name: templateName.value || undefined,
       chapters: treeData.value,
     })
     // 编辑系统模板时，后端返回新创建的个人副本 ID

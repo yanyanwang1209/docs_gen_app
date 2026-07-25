@@ -402,8 +402,7 @@ async def cancel_task(task_id: str, db: AsyncSession = Depends(get_db)):
         _active_tasks[task_id].cancel()
         del _active_tasks[task_id]
 
-    task.status = "failed"
-    task.error_message = "用户取消生成"
+    await db.delete(task)
     await db.commit()
 
     return {"ok": True, "message": "任务已终止"}
