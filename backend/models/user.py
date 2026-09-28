@@ -18,6 +18,7 @@ class User(Base):
     llm_base_url: Mapped[str] = mapped_column(String(500), nullable=True, comment="个人 LLM API 地址")
     llm_api_key: Mapped[str] = mapped_column(String(500), nullable=True, comment="个人 LLM API Key")
     llm_model: Mapped[str] = mapped_column(String(200), nullable=True, comment="个人 LLM 模型")
+    generation_temperature: Mapped[float] = mapped_column(nullable=True, comment="个人生成温度（0.0~1.0）")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -78,7 +78,7 @@ systemctl enable docs-gen
 systemctl start docs-gen
 ```
 
-> **说明**：FastAPI 直接监听 80 端口，同时提供 API 和前端页面（`main.py` 中已配置 `StaticFiles` 挂载 `frontend_dist/`），无需额外 Web 服务器。
+> **说明**：FastAPI 直接监听 80 端口，同时提供 API 和前端页面（`main.py` 中已配置 `StaticFiles` 挂载 `frontend/dist/`），无需额外 Web 服务器。
 
 ## 六、防火墙配置
 
@@ -120,7 +120,7 @@ curl http://localhost:80/api/health
 ```
 /opt/docs_gen/
 ├── backend/              # 后端源码
-├── frontend_dist/        # 前端编译产物
+├── frontend/dist/        # 前端编译产物
 ├── wheels/               # Python 离线依赖包
 ├── storage/              # 运行时数据（自动创建）
 │   ├── docs_gen.db       # SQLite 数据库
@@ -177,7 +177,7 @@ firewall-cmd --list-all
 
 ```bash
 systemctl stop docs-gen
-# 替换 backend/ 和 frontend_dist/ 目录
+# 替换 backend/ 和 frontend/dist/ 目录
 # 如果有新依赖，更新 wheels/ 并重新安装
 pip install --no-index --find-links=./wheels -r requirements.txt
 systemctl start docs-gen

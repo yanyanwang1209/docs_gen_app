@@ -33,3 +33,6 @@ Thumbs.db
 *.tar.gz
 *.zip
 wheels/
+
+# 本地项目副本
+验收文档生成/

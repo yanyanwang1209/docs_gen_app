@@ -22,6 +22,16 @@
           <el-input v-model="form.model" placeholder="default-model" />
         </el-form-item>
 
+        <el-form-item label="生成温度">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <el-slider v-model="form.temperature" :min="0" :max="1" :step="0.1" style="width: 250px" />
+            <span style="font-weight: 600; min-width: 40px; color: #303133">{{ form.temperature }}</span>
+          </div>
+          <div style="color: #999; font-size: 12px">
+            温度越低，生成结果越稳定一致（推荐 0.3）；温度越高，随机性越大（0.7+）
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">全局写作要求</el-divider>
         <el-form-item label="写作要求">
           <el-input v-model="form.global_requirements" type="textarea" :rows="4"
@@ -54,6 +64,7 @@ const form = reactive({
   base_url: '',
   api_key: '',
   model: '',
+  temperature: 0.3,
   global_requirements: '',
   source: 'default',
 })
@@ -78,6 +89,7 @@ async function saveConfig() {
       base_url: form.base_url,
       api_key: form.api_key,
       model: form.model,
+      temperature: form.temperature,
       global_requirements: form.global_requirements,
     })
     ElMessage.success('配置已保存')

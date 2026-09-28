@@ -35,11 +35,17 @@ async def init_db():
         await _migrate_mark_preset_templates(conn)
         # 迁移：添加 owner_id 列（如果不存在）
         await _migrate_add_owner_id(conn)
+        # 迁移：添加 generation_temperature 列（如果不存在）
+        await _migrate_add_generation_temperature(conn)
 
     # 种子数据：为每个文档类型创建默认模板
     await _seed_default_templates()
     # 种子数据：创建默认 admin 用户
     await _seed_admin_user()
+
+    # 迁移：将系统模板中有子章节的父章节设为 title_only（种子数据之后执行）
+    async with engine.begin() as conn:
+        await _migrate_title_only_parents(conn)
 
 
 async def _migrate_add_total_chapters(conn):
@@ -91,6 +97,42 @@ async def _migrate_add_owner_id(conn):
             )
         except Exception:
             pass  # 列已存在，忽略
+
+
+async def _migrate_add_generation_temperature(conn):
+    """迁移：为 users 表添加 generation_temperature 列"""
+    try:
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN generation_temperature FLOAT"
+        )
+    except Exception:
+        pass  # 列已存在，忽略
+
+
+async def _migrate_title_only_parents(conn):
+    """迁移：将系统模板中有子章节的父章节节点设为 title_only"""
+    # 获取所有系统模板的 ID
+    from sqlalchemy import text
+    result = await conn.execute(
+        text("SELECT id FROM document_templates WHERE is_preset = 1")
+    )
+    template_ids = [row[0] for row in result.fetchall()]
+    for tid in template_ids:
+        # 获取该模板中所有有子节点的父节点 ID
+        result = await conn.execute(
+            text("""
+                SELECT DISTINCT parent_id FROM chapter_nodes
+                WHERE template_id = :tid AND parent_id IS NOT NULL
+            """),
+            {"tid": tid},
+        )
+        parent_ids = [row[0] for row in result.fetchall() if row[0]]
+        if parent_ids:
+            for pid in parent_ids:
+                await conn.execute(
+                    text("UPDATE chapter_nodes SET title_only = 1 WHERE id = :pid"),
+                    {"pid": pid},
+                )
 
 
 async def _seed_default_templates():

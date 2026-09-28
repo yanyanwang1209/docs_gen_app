@@ -18,6 +18,7 @@ class LLMConfigOut(BaseModel):
     base_url: str = ""
     api_key: str = ""  # 脱敏后的 Key
     model: str = ""
+    temperature: float = 0.3
     global_requirements: str = ""
     source: str = "default"  # "user" | "default"
 
@@ -26,6 +27,7 @@ class LLMConfigUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+    temperature: float | None = None
     global_requirements: str | None = None
 
 
@@ -59,11 +61,14 @@ async def get_config(request: Request, db: AsyncSession = Depends(get_db)):
     base_url, api_key, model = await _get_user_llm_async(db, user_id)
     # 判断是否使用个人配置：用户设置了任意 LLM 字段即为个人配置
     source = "default"
+    temperature = settings.generation_temperature
     if user_id:
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if user and (user.llm_api_key or user.llm_base_url or user.llm_model):
             source = "user"
+        if user and user.generation_temperature is not None:
+            temperature = user.generation_temperature
 
     # 全局写作要求（共享）
     global_req = ""
@@ -78,6 +83,7 @@ async def get_config(request: Request, db: AsyncSession = Depends(get_db)):
         base_url=base_url,
         api_key=mask_api_key(api_key),
         model=model,
+        temperature=temperature,
         global_requirements=global_req,
         source=source,
     )
@@ -102,6 +108,8 @@ async def update_config(data: LLMConfigUpdate, request: Request, db: AsyncSessio
             user.llm_api_key = data.api_key
     if data.model is not None:
         user.llm_model = data.model
+    if data.temperature is not None:
+        user.generation_temperature = data.temperature
 
     # 保存全局写作要求（共享）
     if data.global_requirements is not None:

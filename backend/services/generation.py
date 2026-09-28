@@ -33,6 +33,11 @@ class GenerationEngine:
         return LLMClient(base_url=base_url, api_key=api_key, model=model)
 
     @property
+    def _temperature(self) -> float:
+        """获取生成温度，优先使用 per-user 配置"""
+        return self.llm_config.get("temperature", settings.generation_temperature)
+
+    @property
     def progress_queue(self) -> asyncio.Queue:
         return self._progress_queue
 
@@ -781,7 +786,7 @@ class GenerationEngine:
         content, usage, finish_reason = await llm.generate_with_usage(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            temperature=settings.generation_temperature,
+            temperature=self._temperature,
             max_tokens=max_tokens,
         )
         full_content = content
@@ -811,7 +816,7 @@ class GenerationEngine:
         for round_num in range(1, max_rounds):
             content, usage, finish_reason = await llm.generate_messages(
                 messages=messages,
-                temperature=settings.generation_temperature,
+                temperature=self._temperature,
                 max_tokens=max_tokens,
             )
             if not content:

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
 
     # 生成配置
-    generation_temperature: float = 0.7
+    generation_temperature: float = 0.3
     generation_max_tokens: int = 4096
     chapter_summary_max_length: int = 500
     max_prompt_chars: int = 12000  # 单次请求 prompt 最大字符数（防止请求体过大）

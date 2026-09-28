@@ -37,14 +37,17 @@ async def _get_user_llm_config(db: AsyncSession, user_id: str | None) -> dict:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user:
-        # 只要用户设置了任意一项 LLM 配置，就使用个人配置（未设置的用系统默认值）
+        config = {}
         has_personal = user.llm_api_key or user.llm_base_url or user.llm_model
         if has_personal:
-            return {
+            config.update({
                 "base_url": user.llm_base_url or settings.llm_base_url,
                 "api_key": user.llm_api_key or settings.llm_api_key,
                 "model": user.llm_model or settings.llm_model,
-            }
+            })
+        if user.generation_temperature is not None:
+            config["temperature"] = user.generation_temperature
+        return config
     return {}
 
 
