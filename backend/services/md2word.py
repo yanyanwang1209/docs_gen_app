@@ -235,24 +235,102 @@ class Md2WordConverter:
         spacer.paragraph_format.first_line_indent = Pt(0)
 
     def _handle_code_block(self, code_lines: list, language: str = ""):
-        """处理代码块：DOT 语言块渲染为图片，其余按普通代码渲染"""
+        """处理代码块：DOT 语言块渲染为 SVG 矢量图，其余按普通代码渲染"""
         if language == "dot":
             dot_source = "\n".join(code_lines)
             if self._dot_renderer:
-                png_bytes = self._dot_renderer.render(dot_source)
-                if png_bytes:
-                    self._add_dot_image(png_bytes)
+                svg_text = self._dot_renderer.render(dot_source)
+                if svg_text:
+                    self._add_dot_svg(svg_text)
                     return
-            # 渲染不可用或失败，降级展示 DOT 源码
             self._add_fallback_dot_code(dot_source)
         else:
             self._add_code_block(code_lines)
 
-    def _add_dot_image(self, png_bytes: bytes):
-        """将 DOT 渲染的 PNG 图片居中插入 Word 文档"""
+    def _add_dot_svg(self, svg_text: str):
+        """将 DOT 渲染的 SVG 矢量图居中插入 Word 文档"""
         from io import BytesIO
+        from lxml import etree
+        from docx.opc.constants import RELATIONSHIP_TYPE as RT
+        import hashlib
 
-        image_stream = BytesIO(png_bytes)
+        # 解析 SVG 获取原始宽高
+        svg_root = etree.fromstring(svg_text.encode("utf-8"))
+
+        def _parse_dim(s: str) -> float:
+            """摘取数字部分，忽略单位"""
+            s = (s or "").strip()
+            num = ""
+            for ch in s:
+                if ch.isdigit() or ch == ".":
+                    num += ch
+                else:
+                    break
+            return float(num) if num else 800
+
+        svg_w = _parse_dim(svg_root.get("width", ""))
+        svg_h = _parse_dim(svg_root.get("height", ""))
+
+        # 96 DPI 换算 EMU（1 inch = 914400 EMU）
+        emu_per_px = 914400 / 96
+        max_w_emu = int(14.5 * 360000)  # 14.5 cm
+
+        w_emu = int(svg_w * emu_per_px)
+        h_emu = int(svg_h * emu_per_px)
+        if w_emu > max_w_emu:
+            h_emu = int(h_emu * max_w_emu / w_emu)
+            w_emu = max_w_emu
+
+        # 通过 python-docx 内部 API 将 SVG 写入包中
+        image_part = self.doc.part.get_or_add_image_part(
+            BytesIO(svg_text.encode("utf-8"))
+        )
+        image_part.content_type = "image/svg+xml"
+        rId = self.doc.part.relate_to(image_part, RT.IMAGE)
+
+        # 构建 OOXML inline drawing 元素
+        ns = {
+            "wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            "pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+        }
+        docpr_id = abs(int(hashlib.md5(svg_text.encode()).hexdigest(), 16)) % 2147483647
+
+        inline_xml = (
+            f'<wp:inline xmlns:wp="{ns["wp"]}" xmlns:a="{ns["a"]}"'
+            f' xmlns:r="{ns["r"]}" xmlns:pic="{ns["pic"]}"'
+            f' distT="0" distB="0" distL="0" distR="0">'
+            f'<wp:extent cx="{w_emu}" cy="{h_emu}"/>'
+            f'<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+            f'<wp:docPr id="{docpr_id}" name="diagram" descr=""/>'
+            f'<wp:cNvGraphicFramePr>'
+            f'<a:graphicFrameLocks noChangeAspect="1"/>'
+            f'</wp:cNvGraphicFramePr>'
+            f'<a:graphic>'
+            f'<a:graphicData uri="{ns["pic"]}">'
+            f'<pic:pic>'
+            f'<pic:nvPicPr>'
+            f'<pic:cNvPr id="0" name="diagram"/>'
+            f'<pic:cNvPicPr/>'
+            f'</pic:nvPicPr>'
+            f'<pic:blipFill>'
+            f'<a:blip r:embed="{rId}"/>'
+            f'<a:stretch><a:fillRect/></a:stretch>'
+            f'</pic:blipFill>'
+            f'<pic:spPr>'
+            f'<a:xfrm>'
+            f'<a:off x="0" y="0"/>'
+            f'<a:ext cx="{w_emu}" cy="{h_emu}"/>'
+            f'</a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+            f'</pic:spPr>'
+            f'</pic:pic>'
+            f'</a:graphicData>'
+            f'</a:graphic>'
+            f'</wp:inline>'
+        )
+        inline_element = etree.fromstring(inline_xml.encode("utf-8"))
 
         para = self.doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -261,14 +339,7 @@ class Md2WordConverter:
         para.paragraph_format.space_after = Pt(6)
 
         run = para.add_run()
-        try:
-            run.add_picture(image_stream, width=Cm(14.5))
-        except Exception as e:
-            print(f"[IMAGE INSERT ERROR] {e}")
-            run.add_text(f"[图表渲染失败: {e}]")
-            run.font.name = self.FONT_NAME
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(200, 0, 0)
+        run._element.append(inline_element)
 
         spacer = self.doc.add_paragraph()
         spacer.paragraph_format.line_spacing = self.LINE_SPACING

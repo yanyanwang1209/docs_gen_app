@@ -1,4 +1,4 @@
-"""DOT (Graphviz) 渲染器 — 通过 subprocess 调用 dot 命令将 DOT 源码渲染为 PNG"""
+"""DOT (Graphviz) 渲染器 — 通过 subprocess 调用 dot 命令将 DOT 源码渲染为 SVG"""
 import subprocess
 import os
 import re
@@ -7,15 +7,15 @@ from backend.config import settings
 
 
 class DotRenderer:
-    """将 DOT 源码渲染为 PNG 图像"""
+    """将 DOT 源码渲染为 SVG 矢量图"""
 
     def __init__(self, dot_command: str | None = None, dpi: int | None = None):
         self.dot_command = dot_command or settings.diagram_dot_command
         self.dpi = dpi or settings.diagram_default_dpi
-        self._available: bool | None = None  # 缓存检测结果
+        self._available: bool | None = None
 
     def is_available(self) -> bool:
-        """检查 dot 是否可用（结果缓存，仅首次运行 dot -V）"""
+        """检查 dot 是否可用（结果缓存）"""
         if self._available is not None:
             return self._available
         try:
@@ -28,55 +28,47 @@ class DotRenderer:
             self._available = False
         return self._available
 
-    def render(self, dot_source: str) -> bytes | None:
-        """渲染 DOT 为 PNG 字节。不可用或失败时返回 None。"""
+    def render(self, dot_source: str) -> str | None:
+        """渲染 DOT 为 SVG 字符串。不可用或失败时返回 None。"""
         if not settings.diagram_enabled:
             return None
         if not self.is_available():
             return None
 
-        dot_path = None
-        png_path = None
-        try:
-            # 移除 LLM 可能写入的 fontname 声明，防止覆盖命令行字体参数
-            # 处理模式: fontname="xxx", 或 , fontname="xxx" 或 fontname='xxx'
-            dot_source = re.sub(
-                r'\bfontname\s*=\s*"[^"]*"\s*,?\s*',
-                '', dot_source, flags=re.IGNORECASE,
-            )
-            dot_source = re.sub(
-                r"\bfontname\s*=\s*'[^']*'\s*,?\s*",
-                '', dot_source, flags=re.IGNORECASE,
-            )
-            # 清理可能残留的前导逗号（如 node [, shape=box] → node [shape=box]）
-            dot_source = re.sub(r'\[,\s*', '[', dot_source)
+        # 移除 LLM 可能写入的 fontname 声明
+        dot_source = re.sub(
+            r'\bfontname\s*=\s*"[^"]*"\s*,?\s*',
+            '', dot_source, flags=re.IGNORECASE,
+        )
+        dot_source = re.sub(
+            r"\bfontname\s*=\s*'[^']*'\s*,?\s*",
+            '', dot_source, flags=re.IGNORECASE,
+        )
+        dot_source = re.sub(r'\[,\s*', '[', dot_source)
 
-            # 写入 DOT 临时文件
+        font = settings.diagram_font_name
+        dot_path = None
+        try:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".dot", delete=False, encoding="utf-8"
             ) as f:
                 dot_path = f.name
                 f.write(dot_source)
 
-            png_path = dot_path + ".png"
-
-            # -Gfontname 覆盖全图默认（含 HTML TABLE 标签）
-            # -Nfontname 强制覆盖节点字体（即便 DOT 源码有 fontname 声明）
-            # -Efontname 强制覆盖边字体
+            cmd = [
+                self.dot_command, "-Tsvg",
+                "-Gfontname=" + font,
+                "-Nfontname=" + font,
+                "-Efontname=" + font,
+                dot_path,
+            ]
             result = subprocess.run(
-                [self.dot_command, "-Tpng",
-                 f"-Gfontname={settings.diagram_font_name}",
-                 f"-Nfontname={settings.diagram_font_name}",
-                 f"-Efontname={settings.diagram_font_name}",
-                 f"-Gdpi={self.dpi}",
-                 "-o", png_path, dot_path],
-                capture_output=True, text=True, timeout=30,
+                cmd, capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
                 print(f"[DOT RENDER ERROR] {result.stderr[:500]}")
                 return None
-            with open(png_path, "rb") as f:
-                return f.read()
+            return result.stdout
         except subprocess.TimeoutExpired:
             print("[DOT RENDER ERROR] 渲染超时（30秒）")
             return None
@@ -84,15 +76,13 @@ class DotRenderer:
             print(f"[DOT RENDER ERROR] {e}")
             return None
         finally:
-            for path in (dot_path, png_path):
-                if path:
-                    try:
-                        os.unlink(path)
-                    except OSError:
-                        pass
+            if dot_path:
+                try:
+                    os.unlink(dot_path)
+                except OSError:
+                    pass
 
 
-# 模块级单例
 _renderer: DotRenderer | None = None
 
 
