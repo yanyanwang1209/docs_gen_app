@@ -108,6 +108,7 @@ PRESET_TEMPLATES = {
                     {"title": "2.1 系统架构", "level": 2, "sort_order": 1, "content_type": "text", "table_config": {}, "content_blocks": [], "content_prompt": "描述系统的总体架构模式和层次划分"},
                     {"title": "2.2 技术选型", "level": 2, "sort_order": 2, "content_type": "table", "table_config": {}, "content_blocks": [], "content_prompt": "以表格形式列出各技术组件的选型和理由"},
                     {"title": "2.3 设计约束", "level": 2, "sort_order": 3, "content_type": "text", "table_config": {}, "content_blocks": [], "content_prompt": "描述系统设计中的约束条件"},
+                    {"title": "2.4 系统架构图", "level": 2, "sort_order": 4, "content_type": "diagram", "table_config": {}, "content_blocks": [], "content_prompt": "使用 DOT 语言描述系统的总体架构图，包括各组件、模块之间的调用关系和数据流。节点使用中文标签，用不同 fillcolor 区分前端、后端、数据库等不同层次（如前端组件用浅蓝色、后端服务用浅绿色、数据层用浅橙色）。"},
                 ],
             },
             {
@@ -183,6 +184,7 @@ PRESET_TEMPLATES = {
                 "children": [
                     {"title": "2.1 模块设计说明", "level": 2, "sort_order": 1, "content_type": "text", "table_config": {}, "content_blocks": [], "content_prompt": "逐一说明各模块的功能、算法和处理流程"},
                     {"title": "2.2 类/接口设计", "level": 2, "sort_order": 2, "content_type": "mixed", "table_config": {}, "content_blocks": [], "content_prompt": "以表格和文字描述关键类和接口的设计"},
+                    {"title": "2.3 处理流程图", "level": 2, "sort_order": 3, "content_type": "diagram", "table_config": {}, "content_blocks": [], "content_prompt": "使用 DOT 语言描述各主要模块的内部处理流程，包括程序逻辑、数据流转和判断分支。为每个主要模块生成独立的 digraph，节点使用中文标签，用不同 shape 区分处理步骤（box）、条件判断（diamond）和起止（ellipse）。"},
                 ],
             },
             {

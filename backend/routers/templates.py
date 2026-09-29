@@ -432,7 +432,7 @@ def _parse_ai_chapters(raw: str) -> list[dict]:
         level = min(level, 3)
 
         content_type = node.get("content_type", "text")
-        if content_type not in ("text", "table", "mixed"):
+        if content_type not in ("text", "table", "mixed", "diagram"):
             content_type = "text"
 
         result = {

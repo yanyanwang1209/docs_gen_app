@@ -555,6 +555,13 @@ class GenerationEngine:
 5. 如果参考文件中有相关内容，必须引用参考文件中的信息
 6. 如果参考文件信息不足，根据专业知识进行合理补充
 7. 每个章节都要有实质性内容，不能空洞
+8. 当需要生成流程图、架构图或关系图时，使用 DOT 语言（Graphviz digraph）描述，并将 DOT 代码放在 ```dot 代码块中。DOT 编写要求：
+   - 使用 digraph 定义有向图，布局方向 rankdir=TB（从上到下）
+   - 节点标签使用中文，用双引号包裹（如 label="用户登录"）
+   - shape=box 表示处理步骤，shape=diamond 表示条件判断，shape=ellipse 表示开始/结束
+   - 用 fillcolor 区分不同类型的节点，搭配 style=filled
+   - 箭头上的 label 简明扼要
+   - 每个图控制在 30 个节点以内，复杂流程可拆分为多个图
 
 {global_requirements}"""
 
@@ -712,6 +719,16 @@ class GenerationEngine:
                     parts.append(table_skeleton)
                     parts.append(f"\n请确保每个固定值出现在正确的行和列中。")
                 parts.append(f"\n请先生成必要的文字说明，再插入表格，表格至少 {rows} 行（含表头）。")
+        elif content_type == "diagram":
+            parts.append(f"\n⚠️ 本章节为流程图/架构图内容，请使用 DOT 语言生成图表。")
+            parts.append(f"输出格式：将每个 DOT 图放在 ```dot 代码块中。")
+            parts.append(f"DOT 编写要求：")
+            parts.append(f"  - 使用 digraph 定义有向图，rankdir=TB（纵向布局）")
+            parts.append(f"  - 节点标签使用中文，用双引号包裹")
+            parts.append(f"  - shape=box 表示处理步骤，shape=diamond 表示判断，shape=ellipse 表示起止")
+            parts.append(f"  - 用不同 fillcolor 区分不同层级的节点")
+            parts.append(f"  - 先输出章节标题 {heading_marker} {chapter['title']}，然后输出 ```dot 代码块")
+            parts.append(f"  - 每个图前后可添加简要的文字说明")
         elif content_type == "text" and chapter.get('content_prompt'):
             # 纯文字章节：明确要求不要使用表格
             parts.append(f"\n请以纯文字段落形式撰写，不要使用表格。")

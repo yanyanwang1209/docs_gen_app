@@ -45,7 +45,7 @@ class ChapterNode(Base):
     title_only: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否仅生成标题")
     content_type: Mapped[str] = mapped_column(
         String(20), default="text",
-        comment="内容类型: text/table/mixed"
+        comment="内容类型: text/table/mixed/diagram"
     )
     content_prompt: Mapped[str] = mapped_column(Text, default="", comment="该章节的内容生成提示")
     table_config: Mapped[str] = mapped_column(Text, default="{}", comment="表格配置 JSON")

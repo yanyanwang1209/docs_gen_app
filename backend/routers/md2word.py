@@ -58,7 +58,8 @@ async def convert_md_text(
 
 async def _convert_and_save(content: str, filename: str, user_id: str | None, db: AsyncSession):
     """执行转换并保存文件"""
-    converter = Md2WordConverter()
+    from backend.services.dot_renderer import get_dot_renderer
+    converter = Md2WordConverter(dot_renderer=get_dot_renderer())
     converter.convert(content)
     word_bytes = converter.save_to_bytes()
 

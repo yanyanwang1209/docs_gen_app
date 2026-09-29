@@ -17,7 +17,8 @@ class WordBuilder:
     @staticmethod
     def build_from_markdown(markdown_text: str, doc_title: str = "", output_path: Optional[str] = None) -> bytes:
         """从 Markdown 构建 Word 文档"""
-        converter = Md2WordConverter(doc_title=doc_title)
+        from backend.services.dot_renderer import get_dot_renderer
+        converter = Md2WordConverter(doc_title=doc_title, dot_renderer=get_dot_renderer())
         converter.convert(markdown_text)
         if output_path:
             converter.save(output_path)

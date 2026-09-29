@@ -51,7 +51,7 @@
           <template #default="{ data }">
             <span style="font-size: 13px">
               <el-tag size="small" :type="data.title_only ? 'info' : ''" style="margin-right: 4px">
-                {{ data.title_only ? '标题' : data.content_type === 'table' ? '表格' : data.content_type === 'mixed' ? '混合' : '文字' }}
+                {{ data.title_only ? '标题' : typeLabel(data.content_type) }}
               </el-tag>
               {{ data.title }}
             </span>
@@ -79,6 +79,7 @@
               <el-radio value="text">纯文字</el-radio>
               <el-radio value="table">表格</el-radio>
               <el-radio value="mixed">文字 + 表格</el-radio>
+              <el-radio value="diagram">流程图</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="内容提示" v-if="!selectedNode.title_only">
@@ -170,6 +171,11 @@ let nodeMap = {}
 const cellInputRefs = {}
 const fileInputRef = ref(null)
 const aiAnalyzing = ref(false)
+
+function typeLabel(ct) {
+  const labels = { text: '文字', table: '表格', mixed: '混合', diagram: '流程图' }
+  return labels[ct] || '文字'
+}
 
 function setCellInputRef(row, col, el) {
   if (el) cellInputRefs[`${row}_${col}`] = el

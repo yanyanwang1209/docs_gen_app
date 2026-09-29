@@ -29,9 +29,10 @@ class Md2WordConverter:
     TABLE_TEXT_SIZE = Pt(10.5)   # 表格文字：五号
     LINE_SPACING = 1.5           # 行间距
 
-    def __init__(self, doc_title: Optional[str] = None):
+    def __init__(self, doc_title: Optional[str] = None, dot_renderer=None):
         self.doc = Document()
         self.doc_title = doc_title  # 外部传入的文档标题
+        self._dot_renderer = dot_renderer  # DotRenderer 或 None
         self._setup_styles()
         self._first_h1_used = False
 
@@ -233,6 +234,58 @@ class Md2WordConverter:
         spacer.paragraph_format.space_before = Pt(0)
         spacer.paragraph_format.first_line_indent = Pt(0)
 
+    def _handle_code_block(self, code_lines: list, language: str = ""):
+        """处理代码块：DOT 语言块渲染为图片，其余按普通代码渲染"""
+        if language == "dot":
+            dot_source = "\n".join(code_lines)
+            if self._dot_renderer:
+                png_bytes = self._dot_renderer.render(dot_source)
+                if png_bytes:
+                    self._add_dot_image(png_bytes)
+                    return
+            # 渲染不可用或失败，降级展示 DOT 源码
+            self._add_fallback_dot_code(dot_source)
+        else:
+            self._add_code_block(code_lines)
+
+    def _add_dot_image(self, png_bytes: bytes):
+        """将 DOT 渲染的 PNG 图片居中插入 Word 文档"""
+        from io import BytesIO
+
+        image_stream = BytesIO(png_bytes)
+
+        para = self.doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para.paragraph_format.first_line_indent = Pt(0)
+        para.paragraph_format.space_before = Pt(6)
+        para.paragraph_format.space_after = Pt(6)
+
+        run = para.add_run()
+        try:
+            run.add_picture(image_stream, width=Cm(14.5))
+        except Exception as e:
+            print(f"[IMAGE INSERT ERROR] {e}")
+            run.add_text(f"[图表渲染失败: {e}]")
+            run.font.name = self.FONT_NAME
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(200, 0, 0)
+
+        spacer = self.doc.add_paragraph()
+        spacer.paragraph_format.line_spacing = self.LINE_SPACING
+        spacer.paragraph_format.first_line_indent = Pt(0)
+
+    def _add_fallback_dot_code(self, dot_source: str):
+        """当 DOT 渲染不可用时，将 DOT 源码以带说明的代码块形式展示"""
+        note_para = self.doc.add_paragraph()
+        note_para.paragraph_format.first_line_indent = Pt(0)
+        run = note_para.add_run("[流程图 — DOT 源码（Graphviz 不可用，请安装 graphviz 后重试）]")
+        run.font.name = self.FONT_NAME
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(128, 128, 128)
+        run.font.italic = True
+
+        self._add_code_block(dot_source.split("\n"))
+
     def _add_image_placeholder(self, alt_text: str):
         """添加图片占位符"""
         para = self.doc.add_paragraph()
@@ -262,6 +315,7 @@ class Md2WordConverter:
         i = 0
         in_code_block = False
         code_lines = []
+        code_lang = ""  # 代码块的语言标签（如 "dot"、"python"）
         in_table = False
         table_lines = []
 
@@ -271,11 +325,14 @@ class Md2WordConverter:
             # 代码块处理
             if line.strip().startswith("```"):
                 if in_code_block:
-                    self._add_code_block(code_lines)
+                    self._handle_code_block(code_lines, code_lang)
                     code_lines = []
                     in_code_block = False
+                    code_lang = ""
                 else:
                     in_code_block = True
+                    lang_match = re.match(r"^```(\S*)", line.strip())
+                    code_lang = (lang_match.group(1) or "").lower() if lang_match else ""
                 i += 1
                 continue
 

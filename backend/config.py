@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     chapter_summary_max_length: int = 500
     max_prompt_chars: int = 12000  # 单次请求 prompt 最大字符数（防止请求体过大）
 
+    # 图表渲染配置
+    diagram_enabled: bool = True
+    diagram_dot_command: str = "dot"
+    diagram_default_dpi: int = 150
+
     model_config = {
         "env_file": _ENV_FILE,
         "env_file_encoding": "utf-8",
