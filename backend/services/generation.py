@@ -562,7 +562,6 @@ class GenerationEngine:
    - 用 fillcolor 区分不同类型的节点，搭配 style=filled
    - 箭头上的 label 简明扼要
    - 每个图控制在 30 个节点以内，复杂流程可拆分为多个图
-   - 不要在 DOT 源码中使用 fontname（由系统自动配置中文字体）
 
 {global_requirements}"""
 

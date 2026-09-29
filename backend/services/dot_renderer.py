@@ -1,7 +1,6 @@
 """DOT (Graphviz) 渲染器 — 通过 subprocess 调用 dot 命令将 DOT 源码渲染为 PNG"""
 import subprocess
 import os
-import re
 import tempfile
 from backend.config import settings
 
@@ -35,22 +34,25 @@ class DotRenderer:
         if not self.is_available():
             return None
 
-        # 清除 DOT 源码中的 fontname 声明，由命令行 -Gfontname 统一控制
-        dot_source = re.sub(r'\bfontname\s*=\s*"[^"]*"\s*', '', dot_source, flags=re.IGNORECASE)
-        dot_source = re.sub(r"\bfontname\s*=\s*'[^']*'\s*", '', dot_source, flags=re.IGNORECASE)
-
-        # 写入 DOT 临时文件
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".dot", delete=False, encoding="utf-8"
-        ) as f:
-            dot_path = f.name
-            f.write(dot_source)
-
-        png_path = dot_path + ".png"
+        dot_path = None
+        png_path = None
         try:
+            # 写入 DOT 临时文件
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".dot", delete=False, encoding="utf-8"
+            ) as f:
+                dot_path = f.name
+                f.write(dot_source)
+
+            png_path = dot_path + ".png"
+
+            # -Nfontname 覆盖节点字体，-Efontname 覆盖边字体
+            # 即便 DOT 源码中有 fontname 声明也会被命令行参数覆盖
             result = subprocess.run(
-                [self.dot_command, "-Tpng", f"-Gdpi={self.dpi}",
-                 f"-Gfontname={settings.diagram_font_name}",
+                [self.dot_command, "-Tpng",
+                 f"-Nfontname={settings.diagram_font_name}",
+                 f"-Efontname={settings.diagram_font_name}",
+                 f"-Gdpi={self.dpi}",
                  "-o", png_path, dot_path],
                 capture_output=True, text=True, timeout=30,
             )
@@ -67,10 +69,11 @@ class DotRenderer:
             return None
         finally:
             for path in (dot_path, png_path):
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+                if path:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
 
 
 # 模块级单例
