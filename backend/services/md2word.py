@@ -282,11 +282,18 @@ class Md2WordConverter:
             w_emu = max_w_emu
 
         # 通过 python-docx 内部 API 将 SVG 写入包中
-        image_part = self.doc.part.get_or_add_image_part(
-            BytesIO(svg_text.encode("utf-8"))
+        # 通过 python-docx 底层 OPC API 将 SVG 写入 docx 包中
+        from docx.opc.part import Part
+        from docx.opc.packuri import PackURI
+        import uuid
+
+        svg_part = Part(
+            partname=PackURI(f"/word/media/{uuid.uuid4().hex}.svg"),
+            content_type="image/svg+xml",
+            blob=svg_text.encode("utf-8"),
+            package=self.doc.part.package,
         )
-        image_part.content_type = "image/svg+xml"
-        rId = self.doc.part.relate_to(image_part, RT.IMAGE)
+        rId = self.doc.part.relate_to(svg_part, RT.IMAGE)
 
         # 构建 OOXML inline drawing 元素
         ns = {

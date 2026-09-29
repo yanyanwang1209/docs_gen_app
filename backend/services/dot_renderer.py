@@ -63,12 +63,13 @@ class DotRenderer:
                 dot_path,
             ]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30,
+                cmd, capture_output=True, timeout=30,
             )
             if result.returncode != 0:
-                print(f"[DOT RENDER ERROR] {result.stderr[:500]}")
+                err_msg = result.stderr.decode("utf-8", errors="replace")[:500]
+                print(f"[DOT RENDER ERROR] {err_msg}")
                 return None
-            return result.stdout
+            return result.stdout.decode("utf-8")
         except subprocess.TimeoutExpired:
             print("[DOT RENDER ERROR] 渲染超时（30秒）")
             return None
