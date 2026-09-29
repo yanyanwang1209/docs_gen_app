@@ -570,7 +570,7 @@ class GenerationEngine:
    - 层内可嵌套子表描述该层的组件、技术栈等
    - 示例参考：
      ```
-     digraph {
+     digraph {{
        rankdir=TB;
        node [shape=plaintext];
        arch [label=<
@@ -580,7 +580,7 @@ class GenerationEngine:
            <TR><TD BGCOLOR=\"#f9e79f\"><B>基础设施层 (IaaS)</B><BR/>计算 / 存储 / 网络 / 虚拟化</TD></TR>
          </TABLE>
        >];
-     }
+     }}
      ```
 
    【组件关系图】
