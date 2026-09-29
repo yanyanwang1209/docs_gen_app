@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     diagram_enabled: bool = True
     diagram_dot_command: str = "dot"
     diagram_default_dpi: int = 150
+    diagram_font_name: str = "SimHei"  # 中文字体，Linux 替换为 WenQuanYi Micro Hei 或 SimSun
 
     model_config = {
         "env_file": _ENV_FILE,
