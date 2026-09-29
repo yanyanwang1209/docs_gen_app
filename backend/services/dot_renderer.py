@@ -46,10 +46,12 @@ class DotRenderer:
 
             png_path = dot_path + ".png"
 
-            # -Nfontname 覆盖节点字体，-Efontname 覆盖边字体
-            # 即便 DOT 源码中有 fontname 声明也会被命令行参数覆盖
+            # -Gfontname 覆盖全图默认（含 HTML TABLE 标签）
+            # -Nfontname 强制覆盖节点字体（即便 DOT 源码有 fontname 声明）
+            # -Efontname 强制覆盖边字体
             result = subprocess.run(
                 [self.dot_command, "-Tpng",
+                 f"-Gfontname={settings.diagram_font_name}",
                  f"-Nfontname={settings.diagram_font_name}",
                  f"-Efontname={settings.diagram_font_name}",
                  f"-Gdpi={self.dpi}",
