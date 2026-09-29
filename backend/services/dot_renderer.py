@@ -1,6 +1,7 @@
 """DOT (Graphviz) 渲染器 — 通过 subprocess 调用 dot 命令将 DOT 源码渲染为 PNG"""
 import subprocess
 import os
+import re
 import tempfile
 from backend.config import settings
 
@@ -37,6 +38,19 @@ class DotRenderer:
         dot_path = None
         png_path = None
         try:
+            # 移除 LLM 可能写入的 fontname 声明，防止覆盖命令行字体参数
+            # 处理模式: fontname="xxx", 或 , fontname="xxx" 或 fontname='xxx'
+            dot_source = re.sub(
+                r'\bfontname\s*=\s*"[^"]*"\s*,?\s*',
+                '', dot_source, flags=re.IGNORECASE,
+            )
+            dot_source = re.sub(
+                r"\bfontname\s*=\s*'[^']*'\s*,?\s*",
+                '', dot_source, flags=re.IGNORECASE,
+            )
+            # 清理可能残留的前导逗号（如 node [, shape=box] → node [shape=box]）
+            dot_source = re.sub(r'\[,\s*', '[', dot_source)
+
             # 写入 DOT 临时文件
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".dot", delete=False, encoding="utf-8"
