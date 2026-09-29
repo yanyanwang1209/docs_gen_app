@@ -556,12 +556,37 @@ class GenerationEngine:
 6. 如果参考文件信息不足，根据专业知识进行合理补充
 7. 每个章节都要有实质性内容，不能空洞
 8. 当需要生成流程图、架构图或关系图时，使用 DOT 语言（Graphviz digraph）描述，并将 DOT 代码放在 ```dot 代码块中。DOT 编写要求：
+
+   【流程图（节点+连线）】
    - 使用 digraph 定义有向图，布局方向 rankdir=TB（从上到下）
-   - 节点标签使用中文，用双引号包裹（如 label="用户登录"）
    - shape=box 表示处理步骤，shape=diamond 表示条件判断，shape=ellipse 表示开始/结束
-   - 用 fillcolor 区分不同类型的节点，搭配 style=filled
    - 箭头上的 label 简明扼要
    - 每个图控制在 30 个节点以内，复杂流程可拆分为多个图
+
+   【分层架构图（如 IaaS/PaaS/SaaS、OSI 分层、系统层次）】
+   - 使用 HTML-like TABLE 标签绘制分层堆叠的架构图
+   - 每层用 <TR><TD BGCOLOR=\"颜色\">层名</TD></TR> 表示
+   - 不同层用不同 BGCOLOR 区分，推荐从上到下颜色由浅到深
+   - 层内可嵌套子表描述该层的组件、技术栈等
+   - 示例参考：
+     ```
+     digraph {
+       rankdir=TB;
+       node [shape=plaintext];
+       arch [label=<
+         <TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"8\">
+           <TR><TD BGCOLOR=\"#a8d8ea\"><B>应用层</B><BR/>Web应用 / REST API / 前端页面</TD></TR>
+           <TR><TD BGCOLOR=\"#a3e4d7\"><B>平台层 (PaaS)</B><BR/>中间件 / 消息队列 / 容器编排</TD></TR>
+           <TR><TD BGCOLOR=\"#f9e79f\"><B>基础设施层 (IaaS)</B><BR/>计算 / 存储 / 网络 / 虚拟化</TD></TR>
+         </TABLE>
+       >];
+     }
+     ```
+
+   【组件关系图】
+   - 节点标签使用中文，用双引号包裹（如 label="用户登录"）
+   - 用 fillcolor 区分不同类型的节点，搭配 style=filled
+   - 可以用 subgraph cluster 来分组
 
 {global_requirements}"""
 
@@ -720,15 +745,15 @@ class GenerationEngine:
                     parts.append(f"\n请确保每个固定值出现在正确的行和列中。")
                 parts.append(f"\n请先生成必要的文字说明，再插入表格，表格至少 {rows} 行（含表头）。")
         elif content_type == "diagram":
-            parts.append(f"\n⚠️ 本章节为流程图/架构图内容，请使用 DOT 语言生成图表。")
+            parts.append(f"\n⚠️ 本章节为图表内容，请使用 DOT 语言生成。")
             parts.append(f"输出格式：将每个 DOT 图放在 ```dot 代码块中。")
-            parts.append(f"DOT 编写要求：")
-            parts.append(f"  - 使用 digraph 定义有向图，rankdir=TB（纵向布局）")
-            parts.append(f"  - 节点标签使用中文，用双引号包裹")
-            parts.append(f"  - shape=box 表示处理步骤，shape=diamond 表示判断，shape=ellipse 表示起止")
-            parts.append(f"  - 用不同 fillcolor 区分不同层级的节点")
-            parts.append(f"  - 先输出章节标题 {heading_marker} {chapter['title']}，然后输出 ```dot 代码块")
-            parts.append(f"  - 每个图前后可添加简要的文字说明")
+            # 根据 content_prompt 关键词判断图表类型
+            prompt_lower = (chapter.get('content_prompt', '') + chapter.get('title', '')).lower()
+            if any(kw in prompt_lower for kw in ('架构', '分层', '层次', 'paas', 'iaas', 'saas', 'osi')):
+                parts.append(f"请使用 HTML-like TABLE 标签绘制分层架构图，每层一个 TR/TD，用 BGCOLOR 区分层次。")
+            else:
+                parts.append(f"请使用 digraph 节点+连线方式绘制流程图。shape=box 表示步骤，shape=diamond 表示判断，shape=ellipse 表示起止。")
+            parts.append(f"先输出章节标题 {heading_marker} {chapter['title']}，然后输出 ```dot 代码块。每个图前后可添加简要文字说明。")
         elif content_type == "text" and chapter.get('content_prompt'):
             # 纯文字章节：明确要求不要使用表格
             parts.append(f"\n请以纯文字段落形式撰写，不要使用表格。")
